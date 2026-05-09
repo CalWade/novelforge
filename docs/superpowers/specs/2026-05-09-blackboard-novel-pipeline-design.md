@@ -4,13 +4,15 @@
 > **参赛赛事**：傅盛 AI 战队青少年黑客松（2026）
 > **主题**：打造你的多 Agent AI 数字团队
 > **截止**：2026-05-10 23:59 北京时间
-> **应用场景**：港综同人小说长链路写作流水线
+> **应用场景**：通用多 Agent 小说写作流水线；内置港综与仙侠两个 Setting 示例
 
 ---
 
 ## 0. 一句话说明
 
-把 Anthropic / Cognition / OpenAI 在长链路 Agent 上踩过的 5 个坑（自评偏乐观、Context Anxiety、AI Slop、AGENTS.md 百科病、缺反馈回路）**当作架构约束**，设计一个能稳定产出连贯港综小说章节的多 Agent 流水线，并把"怎么规避这些坑"变成可在 60 秒内演示出来的 UI 行为。
+把 Anthropic / Cognition / OpenAI 在长链路 Agent 上踩过的 5 个坑（自评偏乐观、Context Anxiety、AI Slop、AGENTS.md 百科病、缺反馈回路）**当作架构约束**，设计一个能稳定产出连贯小说章节的多 Agent 流水线，并把"怎么规避这些坑"变成可在 60 秒内演示出来的 UI 行为。
+
+流水线本身对题材完全无知，具体题材（港综、仙侠、都市、赛博……）通过 **Setting Pack** 注入（见第 7 节）。
 
 ---
 
@@ -279,15 +281,80 @@ blackboard-novel-pipeline/
 
 ---
 
+## 7. Setting System（v1.1 追加）
+
+原 v1.0 设计把"港综 1983"硬编码到 `rules/`、`src/agents/*.py` 与文档中。
+代码审查期间发现这违反了"通用多 Agent 团队"的初衷：架构与具体题材未分离。
+
+### 7.1 分层
+
+```
+通用层（题材无关）             题材层（setting pack）
+──────────────────             ────────────────────
+rules/24-iron-laws.md          settings/<name>/
+rules/18-landmines.md            setting.yaml
+rules/writing-style-core.md      outline.json
+                                 timeline.yaml
+src/agents/*.py                  characters.yaml
+src/auditors/*.py                era.md
+src/pipeline.py                  writing-style-extra.md
+src/blackboard.py                iron-laws-extra.md
+src/llm.py
+AGENTS.md
+```
+
+### 7.2 激活流程
+
+```
+python -m src.bootstrap --setting <name>
+```
+
+把 `settings/<name>/` 的 7 个文件拷贝到 `state/`。Agent 只读 `state/`，跟题材解耦。
+
+### 7.3 Agent 如何读题材内容
+
+| Agent | 通用读 | 题材读 |
+|---|---|---|
+| Planner | outline.json + setting.yaml（genre/era 元信息） | — |
+| Generator | rules/writing-style-core.md | state/setting.yaml + state/era.md + state/writing-style-extra.md + state/characters.yaml |
+| Evaluator | rules/24-iron-laws.md + rules/18-landmines.md | state/iron-laws-extra.md + state/characters.yaml + state/timeline.yaml |
+| Fixer | rules/writing-style-core.md | state/writing-style-extra.md |
+| Summarizer | — | state/chapters/chNNN.md（仅正文） |
+| AISlopGuard | (AI-slop 子集内嵌在 auditor 的 prompt 里，通用) | — |
+| CharacterGuard | — | state/characters.yaml + 历史摘要 |
+
+### 7.4 切题材零代码修改
+
+```bash
+python -m src.bootstrap --setting gangster-hk-1983    # 港综
+python -m src.pipeline --chapter 1
+# ...
+python -m src.bootstrap --setting xianxia-ascension   # 切仙侠
+python -m src.pipeline --chapter 1
+```
+
+### 7.5 内置示例
+
+| Setting | 状态 | 用途 |
+|---|---|---|
+| `gangster-hk-1983` | 完整运行过 3 章，产出在 `demo_snapshot/` | 验证 Agent 间协作 + 端到端 pitch |
+| `xianxia-ascension` | 结构完整（7 文件），未跑 LLM | 证明架构真通用 |
+
+---
+
 ## 8. 评委 60 秒 pitch 脚本
 
-> "**1983 年的香港，主角要白手起家。** 但这本小说不是一个 AI 从头写到尾的——它是五个 Agent 轮流工作，加两个后台审计员。
+> "这是一个多 Agent 小说写作流水线。它由 **5 个主 Agent + 2 个后台审计 Agent** 轮流工作。
 >
 > **（切到 Prompt Inspector）** 看这里。每个 Agent 调用都是 fresh context，只读几个它要的文件，**不继承前一个 Agent 的思考**。这是 Anthropic 的 "Planner/Generator/Evaluator 三角" 的工程化落地。
 >
-> **（切到 state/ 文件树）** 所有状态都沉在文件里。**（点'重置并续写'按钮）** 看——Python 进程死了，新进程起来，从 `progress.json` 读到第几章，继续。这就是 Cognition 说的 Context Reset，不是 context compression。
+> **（切到 state/ 文件树）** 所有状态都沉在文件里。**页面刷新、进程重启、任意时刻中断——只要 `state/progress.json` 还在，就能从上一步继续**。这就是 Cognition 说的 Context Reset，不是 context compression。
 >
 > **（切到 debt.jsonl）** 这是技术债。有些问题 Fixer 两次没改好，就带伤上线，写到 debt 里。后台审计员每天扫一次，找个轻的时候再修。OpenAI 在 Codex 项目里就是这么干的。
+>
+> **（切到 Lessons Map Tab）** 架构不是凭空来的——这里是 5 条 agent 搭建难题与代码落点的对应。每个指针点进去是 GitHub 上的真实行号。
+>
+> **（切题材）** 整个架构对题材一无所知。`settings/gangster-hk-1983/` 是港综示例，`settings/xianxia-ascension/` 是仙侠示例。切题材只需 `bootstrap --setting <name>`，不改代码。
 >
 > 代码 2000 行出头，没用任何 Agent 框架。"
 
@@ -295,13 +362,16 @@ blackboard-novel-pipeline/
 
 ## 9. 交付清单
 
-- [ ] 本设计文档（已提交 git）
-- [ ] GitHub 公开仓库
-- [ ] Flask 可部署到公网的 demo 站
-- [ ] 演示视频（≤2 分钟）或运行截图，作为第 1、2 个补充链接
-- [ ] 代码 ZIP ≤ 10MB
-- [ ] EasyClaw 平台报名表提交
+- [x] 本设计文档（v1.1，已提交 git）
+- [x] GitHub 公开仓库：https://github.com/CalWade/blackboard-novel-pipeline
+- [x] 公网静态演示：https://calwade.github.io/blackboard-novel-pipeline/
+- [x] 完整 3 章产出（demo_snapshot/），Prompt Inspector 37 次调用可查
+- [x] 2 个 Setting 示例（港综完整跑过；仙侠结构完整）
+- [x] 代码 ZIP ≤ 10MB
+- [x] EasyClaw 平台报名表提交
 
 ---
 
-**文档版本**：v1.0（2026-05-09 完成架构评审 by Oracle subagent）
+**文档版本历史**：
+- v1.0（2026-05-09）—— 初始架构评审 by Oracle subagent，采纳 3 条修改（加 Summarizer / 砍 Auditor 4→2 / 加 Prompt Inspector UI）
+- v1.1（2026-05-09 晚）—— Oracle 后评审发现 Evaluator skeleton 伪通过；同时发现架构与题材未分离。重构：抽 `settings/` 系统，加 `xianxia-ascension` 证明通用性；Evaluator 加 skeleton detector；AISlopGuard 改写质量收紧；UI 加 Lessons Map 面板。

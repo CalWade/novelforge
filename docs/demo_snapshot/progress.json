@@ -6,6 +6,8 @@
     3
   ],
   "in_flight": null,
-  "last_update": "2026-05-09T15:59:00",
-  "total_llm_calls": 0
+  "last_update": "2026-05-09T17:14:10",
+  "total_llm_calls": 0,
+  "active_setting": "gangster-hk-1983",
+  "bootstrapped_at": "2026-05-09T16:55:08"
 }

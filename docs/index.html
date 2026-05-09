@@ -109,6 +109,7 @@
     <div class="tabs tabs-right" role="tablist">
       <button class="tab tab-active" data-rtab="inspector" role="tab">Prompt Inspector</button>
       <button class="tab" data-rtab="log" role="tab">Log</button>
+      <button class="tab" data-rtab="lessons" role="tab">Lessons</button>
       <div class="tab-spacer"></div>
       <span class="live-dot" id="live-dot" title="静态快照" style="animation:none;opacity:0.5;background:var(--text-soft);box-shadow:none;"></span>
     </div>
@@ -126,6 +127,14 @@
 
       <div class="tab-pane" data-rpane="log">
         <div id="log-view" class="log-view"></div>
+      </div>
+
+      <div class="tab-pane" data-rpane="lessons">
+        <div class="lessons-hint">
+          <strong>5 条原则 → 5 处代码</strong>
+          <span>Anthropic · Cognition · OpenAI 的 agent 构建经验, 在本项目的精确落地位置。</span>
+        </div>
+        <div id="lessons-panel" class="lessons-panel"></div>
       </div>
     </div>
   </aside>

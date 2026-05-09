@@ -24,6 +24,99 @@ const AGENT_LABEL = {
   character_guard: 'CHARACTER GUARD',
 };
 
+// ---------- LESSONS (pitch crosswalk: principle → code) ----------
+const REPO_URL = 'https://github.com/CalWade/blackboard-novel-pipeline';
+const LESSONS = [
+  {
+    n: 1,
+    title: '反复失败时修工具而非提示',
+    attribution: 'Anthropic',
+    attribution_color: 'anthropic',
+    principle: '状态沉到文件里 · 重启胜过修补',
+    impl: [
+      '所有 Agent 无状态, 每次调用 fresh context',
+      '失败写入 state/issues.jsonl + state/debt.jsonl, Fixer 下一轮从文件读',
+      '重跑整个章节只需一条命令: python -m src.pipeline --chapter N',
+    ],
+    code_pointers: [
+      { label: 'src/blackboard.py', desc: '文件系统 = 共享记忆的唯一 source of truth', github_path: 'src/blackboard.py', logical_path: null },
+      { label: 'src/pipeline.py',   desc: '每个 stage 都是独立 agent.run()',          github_path: 'src/pipeline.py',   logical_path: null },
+      { label: 'state/issues.jsonl', desc: 'append-only 失败日志',                    github_path: null,                logical_path: 'state/issues.jsonl' },
+    ],
+  },
+  {
+    n: 2,
+    title: '自评偏乐观, 必须分工',
+    attribution: 'Anthropic',
+    attribution_color: 'anthropic',
+    principle: '干活的和验收的必须是不同的人',
+    impl: [
+      'Planner / Generator / Evaluator / Fixer / Summarizer 五个独立 Agent',
+      'Evaluator 用对抗人设 (默认拒稿) + 结构化 JSON rubric (18 landmines × severity)',
+      'Evaluator 看不到 Generator 的推理过程, 只看最终文件',
+      '服务端重算 overall_pass, 不信模型自评 + skeleton detector 防模型复制示例',
+    ],
+    code_pointers: [
+      { label: 'src/agents/evaluator.py', desc: '对抗人设 + JSON rubric + skeleton detector', github_path: 'src/agents/evaluator.py', logical_path: null },
+      { label: 'rules/18-landmines.md',   desc: '18 个雷点的结构化判据 (通用)',              github_path: 'rules/18-landmines.md',   logical_path: 'rules/18-landmines.md' },
+      { label: 'state/iron-laws-extra.md', desc: '题材特有铁律 (setting 注入)',              github_path: null,                      logical_path: 'state/iron-laws-extra.md' },
+    ],
+  },
+  {
+    n: 3,
+    title: 'Context Anxiety 需要 Reset',
+    attribution: 'Cognition',
+    attribution_color: 'cognition',
+    principle: '直接丢弃旧窗口, 新窗口从文件读进度',
+    impl: [
+      '每次 LLM 调用都是 fresh session (见 Inspector: 每行 ≤6 文件, 无累积)',
+      'Summarizer 严格只读最终 chapter, 不读 plan/verdict/issues (防 framing 后门泄漏)',
+      'Planner 读 ≤2 份前章摘要, 不读全文, 天然 context 瘦身',
+    ],
+    code_pointers: [
+      { label: 'src/llm.py',               desc: '每次调用新建 messages 数组, 无跨调用 memory', github_path: 'src/llm.py',               logical_path: null },
+      { label: 'src/agents/summarizer.py', desc: 'Summarizer 只读 chapter file (严防泄漏)',   github_path: 'src/agents/summarizer.py', logical_path: null },
+      { label: 'state/prompts_log.jsonl',  desc: '每次调用的 inputs_read 清单 (见 Inspector)', github_path: null,                       logical_path: 'state/prompts_log.jsonl' },
+    ],
+  },
+  {
+    n: 4,
+    title: 'AI Slop 每天还一点',
+    attribution: 'OpenAI Codex',
+    attribution_color: 'openai',
+    principle: '黄金原则沉仓库 · 后台 Agent 定期扫 · 带债上线',
+    impl: [
+      'rules/*.md 是黄金原则 (24 iron laws + 18 landmines, 通用)',
+      'settings/<name>/iron-laws-extra.md: 题材特有铁律 (setting 注入)',
+      '2 个 Auditor 并行独立会话扫每一章 → state/fixes/chNNN.*-patch.md (类 PR)',
+      'Evaluator 2 次 retry 仍不过 → shipped_with_debt, 写 debt.jsonl 不死循环',
+    ],
+    code_pointers: [
+      { label: 'rules/24-iron-laws.md', desc: '通用 golden principles (题材无关)',       github_path: 'rules/24-iron-laws.md', logical_path: 'rules/24-iron-laws.md' },
+      { label: 'src/auditors/',         desc: 'AISlopGuard + CharacterGuard (Fan-Out 并行)', github_path: 'src/auditors',      logical_path: null },
+      { label: 'src/pipeline.py',       desc: '_append_debt: retries 用尽后带债上线',   github_path: 'src/pipeline.py',       logical_path: null },
+      { label: 'state/debt.jsonl',      desc: '技术债账本 (每日可还)',                  github_path: null,                    logical_path: 'state/debt.jsonl' },
+    ],
+  },
+  {
+    n: 5,
+    title: '规则文件宁缺毋滥',
+    attribution: 'OpenAI',
+    attribution_color: 'openai',
+    principle: 'AGENTS.md 目录页 · 详细拆到子文档 · Progressive Disclosure',
+    impl: [
+      'AGENTS.md 仅 ~70 行, 纯索引 + 规则映射表',
+      'rules/ 下 3 份通用规则 + settings/<name>/ 下 3 份题材规则',
+      '每个 Agent 只加载它需要的那 1-2 份 (见 AGENTS.md 规则索引)',
+    ],
+    code_pointers: [
+      { label: 'AGENTS.md',  desc: '70 行目录页, 规则按 agent 分派', github_path: 'AGENTS.md', logical_path: 'AGENTS.md' },
+      { label: 'rules/',     desc: '3 份通用规则 (题材无关)',        github_path: 'rules',     logical_path: null },
+      { label: 'settings/',  desc: '题材包目录, 每个 7 文件',        github_path: 'settings',  logical_path: null },
+    ],
+  },
+];
+
 const state = {
   snapshot: null,          // /api/state last response
   status: { running: false },
@@ -33,6 +126,7 @@ const state = {
   openPromptIds: new Set(),// expanded prompt cards (persist across polls)
   activeCenterTab: 'chapter',
   activeRightTab: 'inspector',
+  lessonsRendered: false,
   statusPollTimer: null,
   statePollTimer: null,
   promptsPollTimer: null,
@@ -159,14 +253,18 @@ function renderTree() {
   // Section: top-level state files
   tree.appendChild(sectionHeader('state/ · root'));
   [
-    ['state/outline.json',     'outline.json'],
-    ['state/progress.json',    'progress.json'],
-    ['state/timeline.yaml',    'timeline.yaml'],
-    ['state/characters.yaml',  'characters.yaml'],
-    ['state/issues.jsonl',     'issues.jsonl'],
-    ['state/debt.jsonl',       'debt.jsonl'],
-    ['state/prompts_log.jsonl','prompts_log.jsonl'],
-  ].forEach(([p, name]) => tree.appendChild(treeItem(p, name, '•')));
+    ['state/setting.yaml',           'setting.yaml',           '◆'],
+    ['state/outline.json',           'outline.json',           '•'],
+    ['state/progress.json',          'progress.json',          '•'],
+    ['state/timeline.yaml',          'timeline.yaml',          '•'],
+    ['state/characters.yaml',        'characters.yaml',        '•'],
+    ['state/era.md',                 'era.md',                 '◆'],
+    ['state/writing-style-extra.md', 'writing-style-extra.md', '◆'],
+    ['state/iron-laws-extra.md',     'iron-laws-extra.md',     '◆'],
+    ['state/issues.jsonl',           'issues.jsonl',           '•'],
+    ['state/debt.jsonl',             'debt.jsonl',             '•'],
+    ['state/prompts_log.jsonl',      'prompts_log.jsonl',      '•'],
+  ].forEach(([p, name, icon]) => tree.appendChild(treeItem(p, name, icon || '•')));
 
   // Section: chapters folder, one group per chapter
   tree.appendChild(sectionHeader('chapters/'));
@@ -200,13 +298,11 @@ function renderTree() {
   tree.appendChild(chWrap);
 
   // Section: rules (Progressive Disclosure)
-  tree.appendChild(sectionHeader('rules/'));
+  tree.appendChild(sectionHeader('rules/ (universal)'));
   [
-    ['rules/24-iron-laws.md',     '24-iron-laws.md'],
-    ['rules/18-landmines.md',     '18-landmines.md'],
-    ['rules/writing-style.md',    'writing-style.md'],
-    ['rules/era-1983-hk.md',      'era-1983-hk.md'],
-    ['rules/characters-canon.md', 'characters-canon.md'],
+    ['rules/24-iron-laws.md',        '24-iron-laws.md'],
+    ['rules/18-landmines.md',        '18-landmines.md'],
+    ['rules/writing-style-core.md',  'writing-style-core.md'],
   ].forEach(([p, name]) => tree.appendChild(treeItem(p, name, '§')));
 
   // Section: project root
@@ -325,7 +421,69 @@ function setRightTab(name) {
   state.activeRightTab = name;
   $$('.tab[data-rtab]').forEach((b) => b.classList.toggle('tab-active', b.dataset.rtab === name));
   $$('.tab-pane[data-rpane]').forEach((p) => p.classList.toggle('tab-pane-active', p.dataset.rpane === name));
+  if (name === 'lessons') {
+    if (!state.lessonsRendered) {
+      renderLessons();
+      state.lessonsRendered = true;
+    }
+    return;
+  }
   renderPrompts(); // re-render current view
+}
+
+// ---------- LESSONS (Flask build: logical_path → openFile, else GitHub) ----------
+function renderLessons() {
+  const root = $('#lessons-panel');
+  if (!root) return;
+  root.innerHTML = '';
+  LESSONS.forEach((lesson) => root.appendChild(lessonCard(lesson)));
+}
+
+function lessonCard(lesson) {
+  return el('div', { class: 'lesson-card', dataset: { n: lesson.n } },
+    el('div', { class: 'lesson-card-head' },
+      el('div', { class: 'lesson-n' }, `Lesson ${String(lesson.n).padStart(2, '0')}`),
+      el('div', { class: `lesson-attr attr-${lesson.attribution_color}` }, lesson.attribution),
+    ),
+    el('h3', { class: 'lesson-title' }, lesson.title),
+    el('div', { class: 'lesson-principle' }, lesson.principle),
+    el('div', { class: 'lesson-section-label' }, '本项目落地'),
+    el('ul', { class: 'lesson-impl' },
+      ...lesson.impl.map((x) => el('li', null, x))),
+    el('div', { class: 'lesson-section-label' }, '代码指针'),
+    el('ul', { class: 'lesson-pointers' },
+      ...lesson.code_pointers.map((p) => el('li', null, renderPointerFlask(p)))),
+  );
+}
+
+function renderPointerFlask(p) {
+  // Prefer opening the file in the center panel (logical_path), since users are here
+  // because they want to *read* the repo. Fall back to GitHub for directories / code.
+  if (p.logical_path) {
+    return el('a', {
+      class: 'ptr-link',
+      href: '#',
+      title: `打开 ${p.logical_path} (中栏)`,
+      onclick: (e) => { e.preventDefault(); openFile(p.logical_path); },
+    },
+      el('code', null, p.label),
+      el('span', { class: 'ptr-desc' }, p.desc),
+      el('span', { class: 'ptr-arrow' }, '→'),
+    );
+  }
+  const repoPath = p.github_path;
+  const href = repoPath ? `${REPO_URL}/blob/main/${repoPath}` : '#';
+  return el('a', {
+    class: 'ptr-link',
+    href,
+    target: '_blank',
+    rel: 'noopener',
+    title: `GitHub · ${repoPath || p.label}`,
+  },
+    el('code', null, p.label),
+    el('span', { class: 'ptr-desc' }, p.desc),
+    el('span', { class: 'ptr-arrow' }, '↗'),
+  );
 }
 
 // ---------- debt ----------

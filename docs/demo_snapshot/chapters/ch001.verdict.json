@@ -92,18 +92,5 @@
       "severity": null
     }
   },
-  "top_3_fixes": [
-    {
-      "where": "…",
-      "what": "…"
-    },
-    {
-      "where": "…",
-      "what": "…"
-    },
-    {
-      "where": "…",
-      "what": "…"
-    }
-  ]
+  "top_3_fixes": []
 }
