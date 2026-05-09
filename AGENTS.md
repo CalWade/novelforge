@@ -63,11 +63,12 @@ python -m src.pipeline --chapter 1
 | `state/issues.jsonl` | 待修问题日志 | Evaluator 追加 |
 | `state/debt.jsonl` | 带伤上线的技术债 | Pipeline（2 次 retry 仍不过） |
 | `state/prompts_log.jsonl` | 每次 LLM 调用的完整记录 | llm.chat() 自动写入 |
+| `state/packaging.json` | 出版包装产物（书名/简介/封面/标签） | PackagingAgent（独立运行 `--packaging`） |
 
 ## Agent 名册
 
 | Agent | 读 | 写 | Temp | 核心 Prompt 要点 |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | Planner | outline + 最近 2 summary + setting.yaml | chNNN.plan.json | 0.4 | 责编视角，输出严格 JSON |
 | Generator | plan + characters + setting.yaml + era + writing-style（core + extra） | chNNN.md (~3000字) | 0.85 | Show-Don't-Tell，禁 AI 味 |
 | Evaluator | chNNN.md + 18-landmines + 24-iron-laws（core + extra）+ characters + timeline | verdict.json + issues.jsonl | 0.0 | 对抗人设，默认拒稿，JSON rubric + skeleton detector |
@@ -75,6 +76,7 @@ python -m src.pipeline --chapter 1
 | Summarizer | chNNN.md **（不读 plan/issues，防 framing 泄漏）** | summaries/chNNN.md | 0.2 | 客观白描 |
 | AISlopGuard | chNNN.md + 摘取 AI 味条目 | fixes/chNNN.slop-patch.md | 0.2 | 只报 AI 味相关（moderate/severe） |
 | CharacterGuard | chNNN.md + characters.yaml + 历史 summaries | fixes/chNNN.char-patch.md | 0.2 | 只报人设偏移 |
+| PackagingAgent | setting.yaml + outline.json + characters.yaml + era.md + ch001.md + 最后章节 | packaging.json | 0.6 | 书名/简介/封面/标签包装，独立运行 `--packaging` |
 
 ## 规则索引（Progressive Disclosure）
 

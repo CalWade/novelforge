@@ -15,6 +15,7 @@ CLI:
   python -m src.pipeline --chapter N
   python -m src.pipeline --range 1-3
   python -m src.pipeline --audit-only N
+  python -m src.pipeline --packaging
 """
 from __future__ import annotations
 
@@ -28,8 +29,15 @@ from datetime import datetime
 from .agents.evaluator import Evaluator
 from .agents.fixer import Fixer
 from .agents.generator import Generator
+from .agents.packaging import PackagingAgent
 from .agents.planner import Planner
 from .agents.summarizer import Summarizer
+from .agents.multi_level_summarizer import (
+    ArcSummarizer,
+    BookSummarizer,
+    is_arc_boundary,
+    is_volume_boundary,
+)
 from .auditors.ai_slop_guard import AISlopGuard
 from .auditors.character_guard import CharacterGuard
 from .blackboard import Blackboard
@@ -128,6 +136,14 @@ def run_chapter(bb: Blackboard, chapter: int) -> dict:
     # 4. Summarize (Lesson-3 isolation — reads only final chapter text)
     _stage("summarize", lambda: Summarizer().run(bb, chapter=chapter))
 
+    # 4b. Arc summary at arc boundaries (ch5, ch10, ch15, ...)
+    if is_arc_boundary(chapter):
+        _stage("arc_summarize", lambda: ArcSummarizer().run(bb, chapter=chapter))
+
+    # 4c. Volume summary at volume boundaries (ch20, ch40, ...)
+    if is_volume_boundary(chapter):
+        _stage("book_summarize", lambda: BookSummarizer().run(bb, chapter=chapter))
+
     # 5. Fan-out Auditors in parallel threads
     def _run_auditor(AuditorClass):
         AuditorClass().run(bb, chapter=chapter)
@@ -180,15 +196,44 @@ def run_audit_only(bb: Blackboard, chapter: int) -> dict:
     return {"chapter": chapter, "audit_duration_s": round(time.time() - t0, 1)}
 
 
+def run_packaging(bb: Blackboard) -> dict:
+    """Run PackagingAgent once to produce state/packaging.json."""
+    t0 = time.time()
+    try:
+        PackagingAgent().run(bb)
+        result = bb.read_json("packaging.json")
+        warnings = result.pop("_validation_warnings", [])
+        return {
+            "ok": True,
+            "duration_s": round(time.time() - t0, 1),
+            "recommended_title": result.get("recommended_title", ""),
+            "tagline": result.get("tagline", ""),
+            "validation_warnings": warnings,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "duration_s": round(time.time() - t0, 1),
+            "error": f"{type(e).__name__}: {e}",
+        }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Blackboard novel pipeline runner")
     grp = parser.add_mutually_exclusive_group(required=True)
     grp.add_argument("--chapter", type=int, help="run one chapter")
     grp.add_argument("--range", type=str, help="run chapters N-M (e.g. 1-3)")
     grp.add_argument("--audit-only", type=int, metavar="N", dest="audit_only")
+    grp.add_argument("--packaging", action="store_true", help="run PackagingAgent to produce state/packaging.json")
     args = parser.parse_args()
 
     bb = Blackboard()
+
+    if args.packaging:
+        result = run_packaging(bb)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
     if args.audit_only is not None:
         print(json.dumps(run_audit_only(bb, args.audit_only), ensure_ascii=False, indent=2))
         return

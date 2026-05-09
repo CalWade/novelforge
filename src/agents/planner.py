@@ -43,21 +43,13 @@ class Planner(BaseAgent):
         genre = setting.get("genre", "通用小说")
         era_label = setting.get("era", "")
 
-        # Read the previous two summaries for narrative continuity (short)
-        prior_summaries = []
-        inputs_read: list[str] = ["state/outline.json", "state/setting.yaml"]
-        for n in (chapter - 2, chapter - 1):
-            if n >= 1:
-                path = f"summaries/ch{n:03d}.md"
-                if bb.exists(path):
-                    prior_summaries.append(f"### 第 {n} 章摘要\n" + bb.read_text(path))
-                    inputs_read.append(f"state/{path}")
+        # Multi-level summary context (L1 last-2 + L2 most-recent-arc +
+        # L3 most-recent-volume if applicable). This scales to 50+ chapters
+        # without context overflow.
+        from .multi_level_summarizer import assemble_long_chain_context
 
-        prior_summary_block = (
-            "\n\n".join(prior_summaries)
-            if prior_summaries
-            else "（这是首章，没有前情摘要）"
-        )
+        prior_summary_block, summary_inputs = assemble_long_chain_context(bb, chapter)
+        inputs_read: list[str] = ["state/outline.json", "state/setting.yaml"] + summary_inputs
 
         system = (
             f"你是拥有 20 年经验的网络小说责编。当前题材：{genre}；时代/世界观：{era_label}。\n"
