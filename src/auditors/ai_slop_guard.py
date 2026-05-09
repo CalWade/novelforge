@@ -39,7 +39,7 @@ class AISlopGuard(BaseAgent):
     name = "ai_slop_guard"
     temperature = 0.2
     response_format = "json"
-    max_tokens = 2500
+    max_tokens = 8192
 
     def _build_prompts(self, bb: Blackboard, *, chapter: int, **_):
         chapter_path = f"chapters/ch{chapter:03d}.md"
@@ -56,6 +56,7 @@ class AISlopGuard(BaseAgent):
             "# 输出要求\n"
             "严格 JSON。包含：slop_score（0 无 AI 味 — 10 满屏 AI 味）、\n"
             "hits（每条：criterion_id、snippet（原文片段，≤60 字）、suggested_rewrite）。\n"
+            "**hits 数组最多 8 条**，只报最严重的。每一条 suggested_rewrite ≤60 字。\n"
             "如果某类未命中，不要强行编造。\n"
         )
 
@@ -88,8 +89,16 @@ class AISlopGuard(BaseAgent):
             s = m.group(1)
         try:
             obj = json.loads(s)
-        except json.JSONDecodeError:
-            obj = {"slop_score": -1, "hits": [], "_raw": raw}
+        except json.JSONDecodeError as e:
+            # Likely truncated JSON — record the failure transparently rather
+            # than silently returning 0 hits. User sees a patch file with a
+            # note to re-run the auditor.
+            obj = {
+                "slop_score": -1,
+                "hits": [],
+                "_parse_error": str(e),
+                "_raw_excerpt": raw[-500:],
+            }
 
         # Render as a human-readable patch file (Lesson 4: visible artifact)
         md_lines = [

@@ -96,8 +96,13 @@ class CharacterGuard(BaseAgent):
             s = m.group(1)
         try:
             obj = json.loads(s)
-        except json.JSONDecodeError:
-            obj = {"ooc_score": -1, "hits": [], "_raw": raw}
+        except json.JSONDecodeError as e:
+            obj = {
+                "ooc_score": -1,
+                "hits": [],
+                "_parse_error": str(e),
+                "_raw_excerpt": raw[-500:],
+            }
 
         md = [
             f"# CharacterGuard 补丁 · 第 {chapter} 章",
