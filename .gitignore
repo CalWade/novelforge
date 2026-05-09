@@ -7,3 +7,5 @@ node_modules/
 .env
 state/
 !state/.gitkeep
+# demo_snapshot/ is intentionally NOT ignored — it's the evidence trail for the demo
+

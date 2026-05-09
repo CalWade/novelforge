@@ -19,7 +19,16 @@ LLM_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 
 # Paths (all relative to project root)
 PROJECT_ROOT: Path = _PROJECT_ROOT
-STATE_DIR: Path = Path(os.environ.get("STATE_DIR", _PROJECT_ROOT / "state"))
+
+# Allow STATE_DIR override via env. On hosted deployments (Railway, Render)
+# we point STATE_DIR at demo_snapshot/ so the Web UI shows real produced content
+# without needing to run the pipeline server-side.
+_state_env = os.environ.get("STATE_DIR")
+if _state_env:
+    STATE_DIR = Path(_state_env)
+else:
+    STATE_DIR = _PROJECT_ROOT / "state"
+
 RULES_DIR: Path = _PROJECT_ROOT / "rules"
 DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 

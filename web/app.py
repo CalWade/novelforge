@@ -24,6 +24,10 @@ from src.blackboard import Blackboard
 app = Flask(__name__, static_folder="static", template_folder="templates")
 bb = Blackboard()
 
+# READONLY_MODE=1 disables /api/run and /api/audit. For hosted demos where
+# we don't want evaluators to burn LLM budget or trigger concurrent runs.
+READONLY_MODE: bool = os.environ.get("READONLY_MODE", "0") == "1"
+
 # ---------- shared run-lock ----------
 _run_lock = threading.Lock()
 _STATUS_PATH = config.STATE_DIR / "pipeline_status.json"
@@ -120,6 +124,7 @@ def api_state():
             "debt_count": debt_count,
             "issue_count": issue_count,
             "prompt_count": prompt_count,
+            "readonly_mode": READONLY_MODE,
         }
     )
 
@@ -232,6 +237,8 @@ def _chapter_arg() -> int:
 
 @app.post("/api/run")
 def api_run():
+    if READONLY_MODE:
+        return jsonify({"started": False, "reason": "readonly_mode"}), 403
     ch = _chapter_arg()
     ok = _spawn(pipeline.run_chapter, ch, kind="full")
     if not ok:
@@ -241,6 +248,8 @@ def api_run():
 
 @app.post("/api/audit")
 def api_audit():
+    if READONLY_MODE:
+        return jsonify({"started": False, "reason": "readonly_mode"}), 403
     ch = _chapter_arg()
     ok = _spawn(pipeline.run_audit_only, ch, kind="audit")
     if not ok:

@@ -1,0 +1,109 @@
+{
+  "overall_pass": true,
+  "landmines": {
+    "landmine_1": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_2": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_3": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_4": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_5": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_6": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_7": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_8": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_9": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_10": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_11": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_12": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_13": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_14": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_15": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_16": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_17": {
+      "hit": false,
+      "evidence": null,
+      "severity": null
+    },
+    "landmine_18": {
+      "hit": true,
+      "evidence": "她围裙上的油渍结成一块块硬壳，手里攥着个玻璃杯，正在用抹布一圈一圈地擦杯口。擦了一圈。又擦一圈。再擦一圈。",
+      "severity": "medium"
+    }
+  },
+  "top_3_fixes": [
+    {
+      "where": "老板娘擦杯子的重复描写（荣记冰室段落）",
+      "what": "删除机械重复的“擦了一圈。又擦一圈。再擦一圈。”，改为更自然的细节描写，如“她机械地擦着杯子，目光却盯着窗外”以体现焦虑，避免AI式排比。"
+    },
+    {
+      "where": "林家耀与肥坤电话谈判段落",
+      "what": "增加肥坤的反应细节（如呼吸变化、背景音），让冲突更有张力，避免主角单方面输出信息导致爽点不足。"
+    },
+    {
+      "where": "结尾赵老四视角的总结性描写",
+      "what": "删除“他见过太多租客。但这个福建仔，他记下了。”这类直接宣告，改用动作或细节暗示赵老四的留意，如“他把钞票凑近鼻子闻了闻，然后塞回裤袋，钥匙串在指间转了两圈。”"
+    }
+  ]
+}
