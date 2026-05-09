@@ -96,7 +96,7 @@
 | Agent | 独立会话？ | 读取文件 | 产出文件 | 模型参数 |
 |---|---|---|---|---|
 | **Planner** | ✓ | `outline.json`, `progress.json`, 最近 2 份 `summaries/chNNN.md` | `chapters/chNNN.plan.json`（本章节拍表） | temp=0.4 |
-| **Generator** | ✓ | `chapters/chNNN.plan.json`, `characters.yaml`, `rules/writing-style.md`, 最近 1 份 summary | `chapters/chNNN.md`（~3000 字） | temp=0.85 |
+| **Generator** | ✓ | `chapters/chNNN.plan.json`, `characters.yaml`, `setting.yaml`, `era.md`, `writing-style-extra.md`, `rules/writing-style-core.md`, 最近 1 份 summary | `chapters/chNNN.md`（~3000 字） | temp=0.85 |
 | **Evaluator** | ✓ | `chapters/chNNN.md`, `characters.yaml`, `timeline.yaml`, `rules/18-landmines.md` | `chapters/chNNN.verdict.json`（rubric + 证据 + 硬伤列表）；issues → `issues.jsonl` | temp=0.0 + 对抗人设 |
 | **Fixer** | ✓ | `chapters/chNNN.md`, 对应的 issues | 重写 `chapters/chNNN.md`（就地覆盖） | temp=0.5 |
 | **Summarizer** | ✓ | **只**读最终的 `chapters/chNNN.md`（不读 plan/issues） | `summaries/chNNN.md`（≤300 字） | temp=0.2 |
@@ -109,7 +109,7 @@
 | **CharacterGuard** | 人设前后一致性、双标、圣母心、降智、反派降智 | ✓ | `fixes/chNNN.char-patch.md` |
 
 **奥卡姆剃刀**：原设计里有 TimelineGuard 和 FactGuard，被砍掉。原因：
-- 3 章 MVP 上时间线/事实冲突的概率极低（预设好 `era-1983-hk.md` 就够）
+- 3 章 MVP 上时间线/事实冲突的概率极低（setting pack 里的 `era.md` 预设好就够）
 - 活爬网费钱且易超时
 - Oracle 建议聚焦最能打动评委的 2 个
 
@@ -186,18 +186,30 @@ blackboard-novel-pipeline/
 │   └── superpowers/specs/
 │       └── 2026-05-09-blackboard-novel-pipeline-design.md   # 本文件
 │
-├── rules/                         # 黄金原则（Lesson 4 + Lesson 5）
-│   ├── 24-iron-laws.md           # 24 条铁律
-│   ├── 18-landmines.md           # 18 个雷点
-│   ├── writing-style.md          # 六步人物分析 + 代入感六支柱 + Show-not-tell
-│   ├── era-1983-hk.md            # 1983 香港背景事实包
-│   └── characters-canon.md       # 人物设定
+├── rules/                         # 通用黄金原则（题材无关, Lesson 4 + Lesson 5）
+│   ├── 24-iron-laws.md            # 24 条通用铁律
+│   ├── 18-landmines.md            # 18 个通用雷点
+│   └── writing-style-core.md      # 通用写作风格（六步人物分析 + 代入感六支柱 + Show-Don't-Tell）
+│
+├── settings/                      # 题材包（Setting Pack）—— 流水线对题材解耦
+│   ├── README.md                  # 怎么新增一个题材
+│   ├── gangster-hk-1983/          # 示例：港综 1983（7 文件）
+│   │   ├── setting.yaml
+│   │   ├── outline.json
+│   │   ├── timeline.yaml
+│   │   ├── characters.yaml
+│   │   ├── era.md
+│   │   ├── writing-style-extra.md
+│   │   └── iron-laws-extra.md
+│   └── xianxia-ascension/         # 示例：仙侠飞升（同样 7 文件，证明架构通用）
 │
 ├── src/
 │   ├── __init__.py
+│   ├── config.py                 # 环境变量 + 路径
 │   ├── llm.py                    # DeepSeek OpenAI 兼容客户端封装
 │   ├── blackboard.py             # state/ 读写接口（原子写+jsonl 追加）
 │   ├── agents/
+│   │   ├── _base.py
 │   │   ├── planner.py
 │   │   ├── generator.py
 │   │   ├── evaluator.py
@@ -207,24 +219,35 @@ blackboard-novel-pipeline/
 │   │   ├── ai_slop_guard.py
 │   │   └── character_guard.py
 │   ├── pipeline.py               # 主循环：plan→gen→eval→fix→sum→fan-out-audit
-│   └── bootstrap.py              # 预置 outline + characters + rules 初始化 state/
+│   └── bootstrap.py              # --setting <name> 把 setting pack 拷入 state/
 │
 ├── web/                          # Flask 演示页
 │   ├── app.py
 │   ├── templates/index.html
 │   └── static/main.css, main.js
 │
+├── docs/                         # GitHub Pages 静态演示 + 设计文档
+│   ├── index.html + main.js + main.css   # 静态只读版
+│   └── superpowers/specs/
+│       └── 2026-05-09-blackboard-novel-pipeline-design.md   # 本文件
+│
+├── demo_snapshot/                # 港综 setting 3 章完整跑出的产物（Pages 数据源）
+│
 ├── state/                        # 运行时产物（.gitignore）
-│   ├── outline.json
-│   ├── timeline.yaml
-│   ├── characters.yaml
+│   ├── setting.yaml              # 当前激活的 setting（bootstrap 从 setting pack 拷入）
+│   ├── outline.json              # 来自 setting
+│   ├── timeline.yaml             # 来自 setting
+│   ├── characters.yaml           # 来自 setting
+│   ├── era.md                    # 来自 setting
+│   ├── writing-style-extra.md    # 来自 setting
+│   ├── iron-laws-extra.md        # 来自 setting
 │   ├── progress.json
-│   ├── chapters/chNNN.md
+│   ├── chapters/chNNN.{md,plan.json,verdict.json}
 │   ├── summaries/chNNN.md
 │   ├── fixes/chNNN.*-patch.md
 │   ├── issues.jsonl
 │   ├── debt.jsonl
-│   └── prompts_log.jsonl        # 每次 LLM 调用的完整 prompt+output（Inspector 用）
+│   └── prompts_log.jsonl         # 每次 LLM 调用的完整记录（Inspector 用）
 │
 └── tests/
     └── test_blackboard.py

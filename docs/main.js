@@ -319,6 +319,25 @@ function renderPills() {
   badge.textContent = s.debt_count > 0 ? String(s.debt_count) : '';
 }
 
+// Inject the active setting's title + subtitle into the top-bar brand line,
+// so the UI reflects whichever setting was bootstrapped (not a hardcoded genre).
+function renderBrandSub() {
+  const el = document.getElementById('brand-sub');
+  if (!el) return;
+  const s = state.snapshot;
+  const novel = (s && s.novel) || {};
+  const parts = [];
+  if (novel.title) parts.push(novel.title);
+  if (novel.subtitle) parts.push(novel.subtitle);
+  parts.push('多智能体小说写作流水线 · 只读快照');
+  el.textContent = parts.join(' · ');
+
+  // Page title too
+  if (novel.title) {
+    document.title = `Blackboard Novel Pipeline · ${novel.title} · 静态演示`;
+  }
+}
+
 // ---------- file tree ----------
 function renderTree() {
   const s = state.snapshot;
@@ -799,6 +818,7 @@ async function init() {
   renderPills();
   renderTree();
   renderPrompts();
+  renderBrandSub();
 
   // Auto-open the first produced chapter so judges see content within 2s.
   const produced = state.snapshot.chapters.find((c) => c.has_md);

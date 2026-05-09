@@ -74,10 +74,10 @@ class CharacterGuard(BaseAgent):
                     "ooc_score": 2,
                     "hits": [
                         {
-                            "character": "林家耀",
-                            "deviation": "主角突然表现出纯粹同情心，违反 extreme 利己 trait",
-                            "prior_baseline": "characters.yaml: traits=[极致利己, 有底线, 算计>胆大]",
-                            "suggested_fix": "补一句内心独白表明这是算计而非纯同情",
+                            "character": "<角色名>",
+                            "deviation": "<具体说明本章哪里违反了该角色的 trait/redline/motivation>",
+                            "prior_baseline": "<引用 characters.yaml 或前情摘要作为依据>",
+                            "suggested_fix": "<具体的修改方向>",
                         }
                     ],
                 },

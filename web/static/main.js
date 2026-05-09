@@ -243,6 +243,24 @@ function renderPills() {
   }
 }
 
+// Inject the active setting's title + subtitle into the top-bar brand line,
+// so the UI reflects whichever setting was bootstrapped (not a hardcoded genre).
+function renderBrandSub() {
+  const elBrand = document.getElementById('brand-sub');
+  if (!elBrand) return;
+  const s = state.snapshot;
+  const novel = (s && s.novel) || {};
+  const parts = [];
+  if (novel.title) parts.push(novel.title);
+  if (novel.subtitle) parts.push(novel.subtitle);
+  parts.push('多智能体小说写作流水线');
+  elBrand.textContent = parts.join(' · ');
+
+  if (novel.title) {
+    document.title = `Blackboard Novel Pipeline · ${novel.title}`;
+  }
+}
+
 // ---------- file tree ----------
 function renderTree() {
   const s = state.snapshot;
@@ -690,6 +708,7 @@ async function pollState() {
     state.snapshot = await api('/api/state');
     renderPills();
     renderTree();
+    renderBrandSub();
   } catch (e) {
     // don't spam toasts on polling failures
     console.warn('state poll:', e.message);

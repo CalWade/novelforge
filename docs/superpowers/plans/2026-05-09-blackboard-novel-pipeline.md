@@ -1,5 +1,10 @@
 # Blackboard Novel Pipeline Implementation Plan
 
+> ⚠️ **历史记录 (v1.0)**：本文件是 2026-05-09 首次实施时的计划，完工后经过一次重大重构——
+> `rules/writing-style.md / era-1983-hk.md / characters-canon.md` 已下沉到 `settings/<name>/`，
+> Agent prompt 题材无关化。当前实际结构见 `docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md` §5。
+> 下文保留原貌仅作历史参考。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an end-to-end multi-agent novel-writing pipeline MVP that produces 3 chapters of a 港综 novel with a Flask demo UI, deployed to a public URL, before 2026-05-10 23:59 Beijing.
