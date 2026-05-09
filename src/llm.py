@@ -18,7 +18,9 @@ import httpx
 from . import config
 
 # We reuse a single httpx client for connection pooling.
-_client = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0))
+# Read timeout is long because Generator can take 2-4 minutes for 3000-char
+# Chinese chapters. We trust the server's own timeout to cut us off if it dies.
+_client = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0))
 
 PROMPT_LOG_PATH = config.STATE_DIR / "prompts_log.jsonl"
 
