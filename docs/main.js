@@ -10,9 +10,9 @@
 // The UI shows logical paths like `state/chapters/ch001.md` so the mental model
 // matches the design doc (state lives in files). Internally, those paths
 // resolve to files committed in the repo.
-const SNAPSHOT_BASE = '../demo_snapshot/';
-const RULES_BASE    = '../rules/';
-const AGENTS_PATH   = '../AGENTS.md';
+const SNAPSHOT_BASE = './demo_snapshot/';
+const RULES_BASE    = './rules/';
+const AGENTS_PATH   = './AGENTS.md';
 
 function resolvePath(logicalPath) {
   // `state/chapters/ch001.md`  -> `../demo_snapshot/chapters/ch001.md`
