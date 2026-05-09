@@ -164,10 +164,10 @@ function fmtRelTime(ts) {
   if (!ts) return '';
   const now = Date.now() / 1000;
   const d = now - ts;
-  if (d < 5) return 'just now';
-  if (d < 60) return Math.round(d) + 's ago';
-  if (d < 3600) return Math.round(d / 60) + 'm ago';
-  if (d < 86400) return Math.round(d / 3600) + 'h ago';
+  if (d < 5) return '刚刚';
+  if (d < 60) return Math.round(d) + ' 秒前';
+  if (d < 3600) return Math.round(d / 60) + ' 分钟前';
+  if (d < 86400) return Math.round(d / 3600) + ' 小时前';
   return new Date(ts * 1000).toLocaleString();
 }
 
@@ -219,11 +219,11 @@ function renderPills() {
   $('#pill-chapter').textContent = curr > 0 ? `${curr}/${s.chapters.length}` : `0/${s.chapters.length}`;
 
   const runPill = $('#pill-running').parentElement;
-  let runLabel = 'idle';
+  let runLabel = '空闲';
   if (st.running) {
-    runLabel = (st.kind === 'audit' ? 'audit · ch ' : 'full · ch ') + (st.chapter ?? '?');
+    runLabel = (st.kind === 'audit' ? '审计 · 第' : '全流程 · 第') + (st.chapter ?? '?') + '章';
   } else if (prog.in_flight && prog.in_flight.stage) {
-    runLabel = prog.in_flight.stage + ' · ch ' + prog.in_flight.chapter;
+    runLabel = prog.in_flight.stage + ' · 第' + prog.in_flight.chapter + '章';
   }
   $('#pill-running').textContent = runLabel;
   runPill.classList.toggle('pill-running', st.running || !!prog.in_flight);
@@ -521,15 +521,15 @@ async function renderDebt() {
     }
     const table = el('table', { class: 'debt-table' },
       el('thead', null, el('tr', null,
-        el('th', null, 'Chapter'),
-        el('th', null, 'Retries'),
-        el('th', null, 'Unresolved'),
-        el('th', null, 'Top Unresolved Landmines'),
-        el('th', null, 'When'),
+        el('th', null, '章节'),
+        el('th', null, '重试次数'),
+        el('th', null, '未决'),
+        el('th', null, 'Top 未决雷点'),
+        el('th', null, '时间'),
       )),
       el('tbody', null,
         ...debt.map((d) => el('tr', null,
-          el('td', null, 'ch ' + d.chapter),
+          el('td', null, '第 ' + d.chapter + ' 章'),
           el('td', null, String(d.retries_used)),
           el('td', null, String((d.unresolved || []).length)),
           el('td', { class: 'debt-landmines' },
@@ -594,7 +594,7 @@ function inspectorCard(p) {
   },
     el('div', { class: 'insp-row-1' },
       el('span', { class: `insp-agent insp-agent-${agent}` }, AGENT_LABEL[agent] || agent.toUpperCase()),
-      chapter ? el('span', { class: 'insp-chapter' }, 'ch ' + chapter) : null,
+      chapter ? el('span', { class: 'insp-chapter' }, '第 ' + chapter + ' 章') : null,
       p.error ? el('span', { class: 'insp-err' }, 'ERROR') : null,
     ),
     el('div', { class: 'insp-time' }, fmtRelTime(p.ts)),
@@ -608,9 +608,9 @@ function inspectorCard(p) {
 
   const body = el('div', { class: 'insp-body' },
     el('div', { class: 'insp-callout' },
-      el('strong', null, '📋 Fresh context · '),
-      promptTokens ? `${promptTokens} prompt tokens, ` : '',
-      'no prior conversation, no leftover memory. This call starts from zero.',
+      el('strong', null, '📋 全新上下文 · '),
+      promptTokens ? `${promptTokens} 个 prompt tokens, ` : '',
+      '无对话历史, 无残留记忆。本次调用从零开始。',
     ),
     inspSection('inputs_read',
       el('div', { class: 'insp-inputs' },
@@ -623,7 +623,7 @@ function inspectorCard(p) {
     ),
     inspSection('system prompt', el('pre', { class: 'insp-pre insp-pre-sys' }, p.system || '')),
     inspSection('user prompt',   el('pre', { class: 'insp-pre insp-pre-user' }, p.user || '')),
-    inspSection(p.error ? 'error' : 'output',
+    inspSection(p.error ? '错误' : '输出',
       el('pre', { class: 'insp-pre insp-pre-output' }, p.error ? JSON.stringify(p.error, null, 2) : (p.output || ''))),
     inspMeta(p),
   );
@@ -652,7 +652,7 @@ function inspSection(label, body) {
 
 function inspMeta(p) {
   return el('div', { class: 'insp-section' },
-    el('div', { class: 'insp-section-label' }, 'raw metadata'),
+    el('div', { class: 'insp-section-label' }, '原始元数据'),
     el('div', { class: 'insp-meta-grid' },
       el('span', null, 'id'),            el('span', null, p.id || '—'),
       el('span', null, 'ts'),            el('span', null, fmtClock(p.ts)),
@@ -694,7 +694,7 @@ function renderLog() {
       el('span', { class: `log-bar ag-${p.agent_name}` }),
       el('span', { class: 'log-time' }, fmtClock(p.ts)),
       el('span', { class: `log-agent insp-agent-${p.agent_name}` }, (p.agent_name || '?').toUpperCase()),
-      el('span', { class: 'log-ch' }, chapter ? 'ch' + chapter : '—'),
+      el('span', { class: 'log-ch' }, chapter ? '第' + chapter + '章' : '—'),
       el('span', { class: 'log-lat' }, p.latency_ms != null ? (p.latency_ms / 1000).toFixed(1) + 's' : '—'),
       el('span', { class: 'log-tok' }, String(tokens)),
       el('span', { class: p.error ? 'log-err' : '' }, p.error ? 'ERROR' : (p.inputs_read || []).join(', ')),
@@ -722,9 +722,9 @@ async function pollStatus() {
     renderPills();
     if (prev && !state.status.running) {
       if (state.status.ok === false) {
-        toast('流水线失败: ' + (state.status.error || 'unknown'), true);
+        toast('流水线失败: ' + (state.status.error || '未知'), true);
       } else {
-        toast('流水线完成 · chapter ' + state.status.chapter);
+        toast('流水线完成 · 第 ' + state.status.chapter + ' 章');
         pollState();
         refreshPrompts();
       }
@@ -758,7 +758,7 @@ async function runNextChapter() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chapter: next }),
     });
-    toast('开始生成 chapter ' + next);
+    toast('开始生成第 ' + next + ' 章');
     pollStatus();
   } catch (e) {
     toast('无法启动: ' + e.message, true);
@@ -775,7 +775,7 @@ async function runAuditCurrent() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chapter: curr }),
     });
-    toast('重审 chapter ' + curr + ' · 仅 Auditor 风扇');
+    toast('重审第 ' + curr + ' 章 · 仅 Auditor 风扇');
     pollStatus();
   } catch (e) {
     toast('无法启动: ' + e.message, true);
