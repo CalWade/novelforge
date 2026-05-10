@@ -47,9 +47,18 @@ class Planner(BaseAgent):
         # L3 most-recent-volume if applicable). This scales to 50+ chapters
         # without context overflow.
         from .multi_level_summarizer import assemble_long_chain_context
+        from .status_card_updater import read_current_status_card
+        from .hook_keeper import read_pending_hooks
 
         prior_summary_block, summary_inputs = assemble_long_chain_context(bb, chapter)
-        inputs_read: list[str] = ["state/outline.json", "state/setting.yaml"] + summary_inputs
+        status_card_text, status_card_inputs = read_current_status_card(bb)
+        pending_hooks_text, pending_hooks_inputs = read_pending_hooks(bb)
+        inputs_read: list[str] = (
+            ["state/outline.json", "state/setting.yaml"]
+            + summary_inputs
+            + status_card_inputs
+            + pending_hooks_inputs
+        )
 
         system = (
             f"你是拥有 20 年经验的网络小说责编。当前题材：{genre}；时代/世界观：{era_label}。\n"
@@ -63,11 +72,19 @@ class Planner(BaseAgent):
             "5. 必须给出开篇钩子（opening_hook，≤30 字）和章末钩子（closing_hook，≤40 字）。\n"
             "6. 必须列出 3-5 个 landmines_to_avoid（写作时要回避的具体雷点）。\n"
             "7. 不编造大纲里没有的情节，但可以为大纲的 beats 补充细节与过渡。\n"
+            "8. **必读『当前状态卡』**：如果存在，它是当前时间点的权威状态覆盖文件——\n"
+            "   时间锚点、敌我关系、资源、已知真相、活跃伏笔、建议的下一章任务都以它为准。\n"
+            "   计划中的 scene 必须与状态卡一致；状态卡的『下一章任务卡』是你写本章 plan 的**种子建议**。\n"
+            "   如果大纲和状态卡冲突（如主角已在状态卡中死亡但大纲仍让他出场），以**最新正文+状态卡**为准。\n"
         )
 
         cur_json = json.dumps(cur, ensure_ascii=False, indent=2)
         user = (
             f"# 本章（第 {chapter} 章）大纲条目\n\n```json\n{cur_json}\n```\n\n"
+            f"# 当前状态卡（当前时间点的权威状态，优先于摘要；冲突以正文+状态卡为准）\n\n"
+            f"{status_card_text}\n\n"
+            f"# 待回收伏笔池（优先安排回收旧钩子，不要只埋新坑）\n\n"
+            f"{pending_hooks_text}\n\n"
             f"# 前情摘要（Context Reset，只有这一点上下文）\n\n{prior_summary_block}\n\n"
             f"# 输出 JSON 结构\n\n"
             "```json\n"

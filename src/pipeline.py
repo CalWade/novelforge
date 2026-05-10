@@ -31,6 +31,9 @@ from .agents.fixer import Fixer
 from .agents.generator import Generator
 from .agents.packaging import PackagingAgent
 from .agents.planner import Planner
+from .agents.status_card_updater import StatusCardUpdater
+from .agents.hook_keeper import HookKeeper
+from .agents.resource_ledger import ResourceLedger, setting_has_resource_schema
 from .agents.summarizer import Summarizer
 from .agents.multi_level_summarizer import (
     ArcSummarizer,
@@ -135,6 +138,23 @@ def run_chapter(bb: Blackboard, chapter: int) -> dict:
 
     # 4. Summarize (Lesson-3 isolation — reads only final chapter text)
     _stage("summarize", lambda: Summarizer().run(bb, chapter=chapter))
+
+    # 4a. Status card update — the ONE authoritative "current time point"
+    # snapshot (Lesson 3: Context Reset). Runs after Summarizer; reads ONLY
+    # the chapter prose + previous card + characters + setting. Planner will
+    # consume this at the start of ch{N+1}.
+    _stage("update_status_card", lambda: StatusCardUpdater().run(bb, chapter=chapter))
+
+    # 4a2. Hook ledger — maintain pending_hooks.md (unresolved hooks).
+    # Independent bookkeeping agent; reads prose + prior ledger + status card.
+    # Keeps hook tracking orthogonal to status-card updates so each can be
+    # re-run in isolation if needed.
+    _stage("update_hook_ledger", lambda: HookKeeper().run(bb, chapter=chapter))
+
+    # 4a3. Resource ledger — only if the setting declared a resource schema.
+    # Non-numeric settings (urban-romance) skip this stage entirely.
+    if setting_has_resource_schema(bb):
+        _stage("update_resource_ledger", lambda: ResourceLedger().run(bb, chapter=chapter))
 
     # 4b. Arc summary at arc boundaries (ch5, ch10, ch15, ...)
     if is_arc_boundary(chapter):
