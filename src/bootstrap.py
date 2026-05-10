@@ -46,6 +46,11 @@ SETTING_FILES = [
     "iron-laws-extra.md",
 ]
 
+# Files that MAY exist in a Setting Pack — copied if present, skipped if not.
+OPTIONAL_SETTING_FILES = [
+    "resource_schema.yaml",  # C-24: enables ResourceLedger Agent for numeric-resource genres
+]
+
 
 def list_settings() -> list[str]:
     root = config.PROJECT_ROOT / "settings"
@@ -136,6 +141,19 @@ def main() -> None:
         shutil.copy2(src, dst)
         size = src.stat().st_size
         print(f"  ✓ {fname}  ({size} B)")
+
+    # Copy optional files if the setting pack provides them; purge any
+    # leftover from previous setting so we don't accidentally reuse
+    # another genre's resource schema after switching.
+    for fname in OPTIONAL_SETTING_FILES:
+        src = setting_dir / fname
+        dst = bb.root / fname
+        if src.exists():
+            shutil.copy2(src, dst)
+            print(f"  ✓ {fname}  ({src.stat().st_size} B)")
+        elif dst.exists():
+            dst.unlink()
+            print(f"  · {fname} (removed — not in this setting)")
 
     # Reset progress
     bb.write_json("progress.json", empty_progress())

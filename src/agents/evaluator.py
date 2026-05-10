@@ -49,6 +49,7 @@ class Evaluator(BaseAgent):
         iron_laws_extra = bb.read_text("iron-laws-extra.md")
         landmines = self._read_rule("18-landmines.md")
         iron_laws = self._read_rule("24-iron-laws.md")
+        info_priority = self._read_rule("00-information-priority.md")
 
         try:
             setting = bb.read_yaml("setting.yaml")
@@ -64,6 +65,7 @@ class Evaluator(BaseAgent):
             "state/iron-laws-extra.md",
             "rules/18-landmines.md",
             "rules/24-iron-laws.md",
+            "rules/00-information-priority.md",
         ]
 
         system = (
@@ -115,6 +117,8 @@ class Evaluator(BaseAgent):
             + iron_laws
             + "\n\n# 参考：题材特有铁律（由 setting 注入）\n\n"
             + iron_laws_extra
+            + "\n\n# 参考：信息源优先级（冲突仲裁协议）\n\n"
+            + info_priority
         )
 
         # NOTE: we intentionally do NOT embed a skeleton with "…" placeholders

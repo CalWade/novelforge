@@ -1,0 +1,67 @@
+# Setting: 都市言情 · 深圳科技园
+# Urban Romance Contemporary — authoritative metadata for this setting pack.
+
+id: urban-romance-contemporary
+display_name: 都市言情 · 深圳科技园
+subtitle: 三十岁那年，她学会了一件事：有些问题没有正确答案，只有选择
+locale: zh-Hans
+
+genre: 都市言情（职场 + 情感克制 + 成年人选择）
+era: 2024-2026 中国一线城市（深圳为主，兼及北京/上海）
+tone: 克制 · 成人 · 选择的代价
+
+# Narrative anchors — passed to Planner/Generator as top-level context
+protagonist_name: 沈若微
+protagonist_hook: 三十岁产品经理，在职业上升期遇见一段需要她慢下来的感情
+opening_year_month: 2024-10
+chapter_count_target: 500
+chapters_in_outline: 10
+
+# Which extra rule/style files live in this setting
+# (Agents will load these from state/ after bootstrap)
+extra_files:
+  timeline: timeline.yaml
+  characters: characters.yaml
+  era: era.md
+  writing_style_extra: writing-style-extra.md
+  iron_laws_extra: iron-laws-extra.md
+
+# Author-mode hints the Generator will fold into its persona prompt
+author_persona_hints:
+  - 擅长成年人的情感叙事，不写少女怀春，只写成年人做选择的瞬间
+  - 熟悉互联网/科技行业职场生态（需求评审、OKR、裁员、跳槽、竞业）
+  - 擅长用日常物品和城市细节承载情绪（地铁报站、外卖软件提示音、咖啡店的暖灯）
+  - 对话短而有节奏，真实都市男女的说话方式
+  - 场景感强，深圳科技园/北京国贸/上海陆家嘴都写过
+  - 感情线用"选择"而非"互动"体现——主角每次选什么、放弃什么，读者就读到关系在哪里
+  - 克制叙事，不煽情，不写哭戏（除非有充分铺垫）
+
+# Avoid-list reminders Generator can reference in prompts
+genre_avoid:
+  - 玛丽苏（女主完美无缺、所有男人都爱她）
+  - 霸总大套路（总裁邪魅一笑、壁咚、合约婚姻、带球跑）
+  - 三角恋戏剧化（两男争一女、闺蜜抢男友、误会梗三连）
+  - 非成年人的幼稚撒娇（女主用嘟嘴、跺脚、拉衣角表达情绪）
+  - 车祸/失忆/绝症/替身文学等韩剧老梗
+  - 女主的职业只是背景板（写了PM但从不写她上班）
+  - 感情进展过快（认识三天表白、一周在一起、一月同居）
+  - 角色为爱放弃一切（辞职、放弃升迁、跟对方去陌生城市——除非是真有铺垫的艰难选择）
+  - 对真实公司做道德褒贬（腾讯/字节/阿里/华为可以出现，但不要写成"好公司"或"坏公司"）
+
+# 风格锁定（prohibited_styles）—— Generator/Fixer 每章顶部加载
+# 来源：skill #24 全局风格锁定。长链路写作最易飘，必须显式禁止跨题材串味。
+prohibited_styles:
+  # 通用禁止（所有 setting 共用）
+  - 影视剧本腔（"镜头推进"/"特写"/"切"等镜头语言）
+  - 游戏系统播报腔（"恭喜获得"/"任务完成"/经验条描写）
+  - 轻小说吐槽腔（"我说你啊……"+"吐槽"连环）
+  - 散文抒情腔（大段环境白描无推进，风景文写法）
+  - 玩梗吐槽（网络流行梗穿帮出现在成年人的严肃对白里）
+  # 题材特定禁止
+  - 霸总腔（"女人，你成功引起了我的注意"/壁咚/公主抱/强制爱）
+  - 玛丽苏腔（"为什么你对我这么好"/所有男人都喜欢女主）
+  - 宫斗古风腔（"此事怕是另有隐情"/后宫争宠模板）
+  - 少女漫吐槽腔（"啊啊啊他刚才看了我一眼！"/大量连续感叹号）
+  - 韩剧车祸失忆三连（车祸/失忆/绝症/替身/带球跑/契约结婚）
+  - 玄幻修仙腔（飞剑、灵气、修为、丹田等）
+  - 粤语江湖腔（大佬、红棍、咪郁——与沪深职场语境冲突）

@@ -33,10 +33,21 @@ class Fixer(BaseAgent):
         style_core = self._read_rule("writing-style-core.md")
         style_extra = bb.read_text("writing-style-extra.md")
 
+        try:
+            setting = bb.read_yaml("setting.yaml")
+        except Exception:
+            setting = {}
+        prohibited_styles = setting.get("prohibited_styles", []) or []
+        if prohibited_styles:
+            prohibited_block = "\n".join(f"- {s}" for s in prohibited_styles)
+        else:
+            prohibited_block = "- （本 setting 未声明风格禁止清单）"
+
         inputs_read = [
             f"state/{chapter_path}",
             f"state/{verdict_path}",
             "state/writing-style-extra.md",
+            "state/setting.yaml",
             "rules/writing-style-core.md",
         ]
 
@@ -50,6 +61,10 @@ class Fixer(BaseAgent):
 
         system = (
             "你是业内顶级改稿高手。\n"
+            "\n"
+            "# 风格锁定（不可逾越的基调下限）\n"
+            "修改过程中**严禁跨题材串味**，以下风格任何一条都视为基调崩坏：\n"
+            f"{prohibited_block}\n"
             "\n"
             "# 修改档分级（重要）\n"
             "\n"
@@ -69,6 +84,9 @@ class Fixer(BaseAgent):
             "4. 修改后的章节字数与原章节相差不超过 ±15%。\n"
             "5. 输出完整的修改后章节正文（包括章节标题），不要输出任何解释、diff、总结。\n"
             "6. **定位 evidence 的根因修**，不要做纯语言润色把症状盖住。\n"
+            "7. **冲突仲裁**：若 top_3_fixes 的修改方向与 `state/current_status_card.md` 冲突——\n"
+            "   不改正文，向上反馈让 StatusCardUpdater 下轮更新卡（遵守 `rules/00-information-priority.md` R1）。\n"
+            "   正文是 ground truth，不得反向回修过去章节。\n"
             "\n"
             "# 写作风格（你的基准，回答时别写成 AI 味）\n\n"
             "## 通用规范\n\n"
