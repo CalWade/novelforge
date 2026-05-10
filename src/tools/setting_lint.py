@@ -59,6 +59,13 @@ REQUIRED_FILES = [
     "iron-laws-extra.md",
 ]
 
+# OPTIONAL: only checked when present. Non-numeric settings (e.g.
+# urban-romance) deliberately omit resource_schema.yaml and that is
+# correct — ResourceLedger will simply skip for such settings.
+OPTIONAL_FILES = [
+    "resource_schema.yaml",
+]
+
 REQUIRED_SETTING_FIELDS = [
     "id",
     "display_name",
@@ -393,7 +400,92 @@ def lint_setting(setting_dir: Path) -> LintReport:
                     "should be in-world, not refer to the system project",
                 )
 
+    # Check 7 (optional): resource_schema.yaml — only validated when present.
+    # Missing schema is a valid choice (non-numeric settings like urban-romance
+    # deliberately opt out so ResourceLedger stays skipped).
+    schema_path = setting_dir / "resource_schema.yaml"
+    if schema_path.exists():
+        _lint_resource_schema(schema_path, report)
+    else:
+        report.info(
+            "resource_schema.yaml",
+            "optional file absent — ResourceLedger agent will be skipped for this "
+            "setting (fine for non-numeric genres; add the file if your genre has "
+            "trackable resources like 灵石/情报值/境界)",
+        )
+
     return report
+
+
+def _lint_resource_schema(schema_path: Path, report: LintReport) -> None:
+    """Validate an optional resource_schema.yaml. Only called when file exists."""
+    fname = "resource_schema.yaml"
+    try:
+        data = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        report.error(fname, f"YAML parse failed: {e}")
+        return
+
+    if not isinstance(data, dict):
+        report.error(fname, "top-level must be a mapping with 'resources' and 'validation'")
+        return
+
+    # resources[]
+    resources = data.get("resources")
+    if not isinstance(resources, list):
+        report.error(fname, "'resources' must be a list")
+        return
+    if len(resources) == 0:
+        report.warning(
+            fname,
+            "'resources' is empty — file serves no purpose; delete it to let "
+            "ResourceLedger skip cleanly, or declare at least one tracked resource",
+        )
+
+    seen_ids: set[str] = set()
+    for i, r in enumerate(resources):
+        if not isinstance(r, dict):
+            report.error(fname, f"resources[{i}] must be a mapping")
+            continue
+        for f in ("id", "display_name", "unit", "description"):
+            if f not in r:
+                report.error(
+                    fname,
+                    f"resources[{i}] missing required field: {f}",
+                )
+        rid = r.get("id")
+        if isinstance(rid, str):
+            if rid in seen_ids:
+                report.error(fname, f"duplicate resource id: {rid}")
+            seen_ids.add(rid)
+        # baseline_scale is recommended (helps ResourceLedger + Evaluator)
+        if "baseline_scale" not in r:
+            report.info(
+                fname,
+                f"resources[{i}] ('{rid}') has no baseline_scale — "
+                "ResourceLedger can't detect scale jumps without it",
+            )
+
+    # validation section
+    validation = data.get("validation")
+    if validation is None:
+        report.warning(
+            fname,
+            "missing 'validation' section — add increment_rules + "
+            "forbidden_fuzzy_terms to enable scale-jump detection",
+        )
+    elif not isinstance(validation, dict):
+        report.error(fname, "'validation' must be a mapping")
+    else:
+        forbidden = validation.get("forbidden_fuzzy_terms")
+        if forbidden is None:
+            report.info(
+                fname,
+                "validation.forbidden_fuzzy_terms missing — recommend listing "
+                "words like '暴涨/海量/难以估量' to force numeric honesty",
+            )
+        elif not isinstance(forbidden, list):
+            report.error(fname, "validation.forbidden_fuzzy_terms must be a list")
 
 
 # --- helpers ---

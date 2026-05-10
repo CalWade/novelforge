@@ -254,6 +254,39 @@ def render_md(dir_: Path) -> str:
             )
         lines.append("")
 
+    # ---- Bookkeeping ledger presence (Lesson-3 layer) ----
+    # These files are overwrite-style (not per-chapter), so we report
+    # their presence + size + last-modified as a sanity check that the
+    # bookkeeping layer is actually running and producing artifacts.
+    bk_files = [
+        ("current_status_card.md", "StatusCardUpdater (C-23)", "当前时间点权威快照"),
+        ("pending_hooks.md",       "HookKeeper (C-25)",        "待回收伏笔池"),
+        ("resource_schema.yaml",   "setting.yaml (optional)",  "可追踪资源定义 (仅特定题材)"),
+        ("resource_ledger.md",     "ResourceLedger (C-24)",    "资源账本 (需 schema)"),
+    ]
+    present = [f for f, _, _ in bk_files if (dir_ / f).exists()]
+    lines.append("## Bookkeeping 账本（Lesson-3 层）")
+    lines.append("")
+    if present:
+        lines.append("| 文件 | 产出 Agent | 含义 | 存在 | 字节数 |")
+        lines.append("|---|---|---|---|---|")
+        for fname, producer, desc in bk_files:
+            p = dir_ / fname
+            if p.exists():
+                lines.append(f"| `{fname}` | {producer} | {desc} | ✅ | {p.stat().st_size:,} |")
+            else:
+                # only report as missing if it's the ledger whose schema is present
+                # (resource_ledger.md legitimately missing when schema is absent)
+                is_optional_ledger = (fname == "resource_ledger.md" and
+                                      not (dir_ / "resource_schema.yaml").exists())
+                if is_optional_ledger:
+                    continue
+                lines.append(f"| `{fname}` | {producer} | {desc} | ❌ | — |")
+        lines.append("")
+    else:
+        lines.append("*当前无 bookkeeping 账本产出（可能是 pre-C-23 的旧快照，或尚未运行过完整 pipeline）*")
+        lines.append("")
+
     # ---- Debt ----
     if debt:
         lines.append("## 待偿技术债")

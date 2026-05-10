@@ -2,7 +2,7 @@
 
 - **Setting**：`xianxia-ascension` · 仙侠 / 修真飞升（低魔 + 世家宗门 + 因果宿命）
 - **数据来源**：`demo_snapshot_xianxia`
-- **生成时间**：2026-05-10T06:37:23
+- **生成时间**：2026-05-10T16:09:22
 
 ## 总览
 
@@ -42,6 +42,15 @@
 | `generator` | 3 | 82.8 | 9,843 | 29,529 | 0 |
 | `planner` | 3 | 28.9 | 2,113 | 6,339 | 0 |
 | `summarizer` | 3 | 9.5 | 2,872 | 8,615 | 0 |
+
+## Bookkeeping 账本（Lesson-3 层）
+
+| 文件 | 产出 Agent | 含义 | 存在 | 字节数 |
+|---|---|---|---|---|
+| `current_status_card.md` | StatusCardUpdater (C-23) | 当前时间点权威快照 | ✅ | 4,767 |
+| `pending_hooks.md` | HookKeeper (C-25) | 待回收伏笔池 | ✅ | 1,925 |
+| `resource_schema.yaml` | setting.yaml (optional) | 可追踪资源定义 (仅特定题材) | ✅ | 3,713 |
+| `resource_ledger.md` | ResourceLedger (C-24) | 资源账本 (需 schema) | ✅ | 1,492 |
 
 ## 待偿技术债
 

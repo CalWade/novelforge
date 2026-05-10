@@ -2,7 +2,7 @@
 
 - **Setting**：`gangster-hk-1983` · 港综同人（都市犯罪 + 市井江湖 + 金融操盘）
 - **数据来源**：`demo_snapshot`
-- **生成时间**：2026-05-10T06:35:42
+- **生成时间**：2026-05-10T16:09:22
 
 ## 总览
 
@@ -44,6 +44,15 @@
 | `generator` | 3 | 105.9 | 9,964 | 29,893 | 0 |
 | `planner` | 3 | 28.5 | 2,002 | 6,005 | 0 |
 | `summarizer` | 3 | 9.6 | 3,883 | 11,650 | 0 |
+
+## Bookkeeping 账本（Lesson-3 层）
+
+| 文件 | 产出 Agent | 含义 | 存在 | 字节数 |
+|---|---|---|---|---|
+| `current_status_card.md` | StatusCardUpdater (C-23) | 当前时间点权威快照 | ✅ | 4,699 |
+| `pending_hooks.md` | HookKeeper (C-25) | 待回收伏笔池 | ✅ | 1,678 |
+| `resource_schema.yaml` | setting.yaml (optional) | 可追踪资源定义 (仅特定题材) | ✅ | 3,147 |
+| `resource_ledger.md` | ResourceLedger (C-24) | 资源账本 (需 schema) | ✅ | 1,873 |
 
 ## 待偿技术债
 

@@ -34,13 +34,18 @@ python -m src.pipeline --chapter 1
 
 ## Setting 系统
 
-题材包放在 `settings/<name>/`，每个 7 个文件：`setting.yaml` + `outline.json` + `timeline.yaml` + `characters.yaml` + `era.md` + `writing-style-extra.md` + `iron-laws-extra.md`。详见 `settings/README.md`。
+题材包放在 `settings/<name>/`，每个 **7 个必需文件** + 1 个可选文件：
+- 必需：`setting.yaml` + `outline.json` + `timeline.yaml` + `characters.yaml` + `era.md` + `writing-style-extra.md` + `iron-laws-extra.md`
+- 可选：`resource_schema.yaml`（仅在题材需要数值资源账本时提供；非数值化题材如都市言情不创建此文件，pipeline 会自动跳过 ResourceLedger）
 
-`bootstrap` 把选定 setting 的 7 份文件拷入 `state/`，Agent 只读 `state/`，与题材解耦。
+详见 `settings/README.md`。
 
-内置两个 setting：
-- `gangster-hk-1983` —— 港综同人，1983 香港（完整运行过 3 章，产出见 `demo_snapshot/`）
-- `xianxia-ascension` —— 仙侠修真，青龙历纪元（结构完整，未跑 LLM 节省 demo token）
+`bootstrap` 把选定 setting 的 7 份必需文件拷入 `state/`；如存在 `resource_schema.yaml` 也一并注入，切换到没有 schema 的 setting 时会**主动删除** state/ 里残留的旧 schema。Agent 只读 `state/`，与题材解耦。
+
+内置三个 setting：
+- `gangster-hk-1983` —— 港综同人，1983 香港（完整运行过 3 章，产出见 `demo_snapshot/`；提供 resource_schema）
+- `xianxia-ascension` —— 仙侠修真，青龙历纪元（完整运行过 3 章，产出见 `demo_snapshot_xianxia/`；提供 resource_schema）
+- `urban-romance-contemporary` —— 都市言情，2024 深圳（结构完整，未跑 LLM；故意不提供 resource_schema——成年人的情感不数值化）
 
 ## State 目录地图
 

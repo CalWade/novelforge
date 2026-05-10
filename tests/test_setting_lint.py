@@ -206,3 +206,96 @@ def test_real_xianxia_setting_has_no_errors():
     xianxia = config.PROJECT_ROOT / "settings" / "xianxia-ascension"
     r = lint_setting(xianxia)
     assert r.n_errors == 0, f"xianxia setting has errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
+
+
+# ---- Optional resource_schema.yaml linting (C-24) ----
+
+def test_resource_schema_absent_is_info_not_error(clean_setting):
+    """A setting with no resource_schema.yaml must lint clean — it's a
+    legitimate choice (non-numeric genres opt out)."""
+    r = lint_setting(clean_setting)
+    assert r.n_errors == 0
+    # Must inform the author that the file is optional + why it's absent
+    info_msgs = [i for i in r.issues if i.level == "INFO" and "resource_schema.yaml" in i.file]
+    assert len(info_msgs) == 1
+    assert "optional" in info_msgs[0].message.lower() or "skipped" in info_msgs[0].message.lower()
+
+
+def test_resource_schema_present_and_valid_is_clean(clean_setting):
+    (clean_setting / "resource_schema.yaml").write_text(
+        yaml.safe_dump({
+            "resources": [
+                {"id": "gold", "display_name": "Gold", "unit": "枚",
+                 "description": "Test resource",
+                 "baseline_scale": {"low": "1-10"}},
+            ],
+            "validation": {
+                "increment_rules": [{"threshold_3x": "rule"}],
+                "forbidden_fuzzy_terms": ["暴涨"],
+            },
+        }, allow_unicode=True),
+        encoding="utf-8",
+    )
+    r = lint_setting(clean_setting)
+    # No errors + no INFO about missing schema (it's now present)
+    assert r.n_errors == 0
+    assert not any("optional file absent" in i.message for i in r.issues)
+
+
+def test_resource_schema_missing_required_field_is_error(clean_setting):
+    (clean_setting / "resource_schema.yaml").write_text(
+        yaml.safe_dump({
+            "resources": [
+                {"id": "gold", "unit": "枚"},  # missing display_name, description
+            ],
+            "validation": {"forbidden_fuzzy_terms": []},
+        }, allow_unicode=True),
+        encoding="utf-8",
+    )
+    r = lint_setting(clean_setting)
+    errors = [i for i in r.issues if i.level == "ERROR" and "resource_schema.yaml" in i.file]
+    assert len(errors) >= 2  # missing display_name AND description
+    assert any("display_name" in i.message for i in errors)
+    assert any("description" in i.message for i in errors)
+
+
+def test_resource_schema_duplicate_id_is_error(clean_setting):
+    (clean_setting / "resource_schema.yaml").write_text(
+        yaml.safe_dump({
+            "resources": [
+                {"id": "gold", "display_name": "G", "unit": "u", "description": "d"},
+                {"id": "gold", "display_name": "G2", "unit": "u", "description": "d"},
+            ],
+            "validation": {"forbidden_fuzzy_terms": []},
+        }, allow_unicode=True),
+        encoding="utf-8",
+    )
+    r = lint_setting(clean_setting)
+    assert any(
+        i.level == "ERROR" and "duplicate resource id: gold" in i.message
+        for i in r.issues
+    )
+
+
+def test_resource_schema_malformed_yaml_is_error(clean_setting):
+    (clean_setting / "resource_schema.yaml").write_text(
+        "this: is: bad:yaml:[", encoding="utf-8"
+    )
+    r = lint_setting(clean_setting)
+    assert any(
+        i.level == "ERROR" and "resource_schema.yaml" in i.file
+        and "parse failed" in i.message
+        for i in r.issues
+    )
+
+
+def test_real_urban_romance_no_schema_still_clean():
+    """Integration: urban-romance deliberately has no resource_schema.yaml
+    and must still pass lint with zero errors."""
+    from src import config
+    urban = config.PROJECT_ROOT / "settings" / "urban-romance-contemporary"
+    assert not (urban / "resource_schema.yaml").exists(), (
+        "urban-romance should intentionally omit resource_schema.yaml"
+    )
+    r = lint_setting(urban)
+    assert r.n_errors == 0
