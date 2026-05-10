@@ -216,6 +216,91 @@ def run_audit_only(bb: Blackboard, chapter: int) -> dict:
     return {"chapter": chapter, "audit_duration_s": round(time.time() - t0, 1)}
 
 
+# -------------------------------------------------------------------------
+# Intent Router (C-22) — lets users rerun individual stages without the
+# full pipeline. Mirrors skill #1's "mixed-task orchestration" principle:
+# the user declares intent (plan / write / evaluate / bookkeeping) and the
+# pipeline dispatches only the relevant stages.
+# -------------------------------------------------------------------------
+
+def run_plan_only(bb: Blackboard, chapter: int) -> dict:
+    """Regenerate plan.json for a chapter without touching prose."""
+    t0 = time.time()
+    Planner().run(bb, chapter=chapter)
+    return {"chapter": chapter, "stage": "plan", "duration_s": round(time.time() - t0, 1)}
+
+
+def run_write_only(bb: Blackboard, chapter: int) -> dict:
+    """Regenerate chapter prose from existing plan.json (skip planning)."""
+    t0 = time.time()
+    Generator().run(bb, chapter=chapter)
+    return {"chapter": chapter, "stage": "write", "duration_s": round(time.time() - t0, 1)}
+
+
+def run_evaluate_only(bb: Blackboard, chapter: int) -> dict:
+    """Re-evaluate an existing chapter; writes fresh verdict.json."""
+    t0 = time.time()
+    Evaluator().run(bb, chapter=chapter)
+    verdict = bb.read_json(f"chapters/ch{chapter:03d}.verdict.json")
+    return {
+        "chapter": chapter,
+        "stage": "evaluate",
+        "overall_pass": verdict.get("overall_pass"),
+        "duration_s": round(time.time() - t0, 1),
+    }
+
+
+def run_fix_only(bb: Blackboard, chapter: int) -> dict:
+    """Run Fixer once using existing verdict.json's top_3_fixes."""
+    t0 = time.time()
+    Fixer().run(bb, chapter=chapter)
+    return {"chapter": chapter, "stage": "fix", "duration_s": round(time.time() - t0, 1)}
+
+
+def run_bookkeeping_only(bb: Blackboard, chapter: int) -> dict:
+    """Refresh the derived ledgers (summary + status card + hooks + optional resources).
+
+    Useful when the chapter prose was manually edited and we need the
+    downstream bookkeeping agents to re-sync.
+    """
+    t0 = time.time()
+    stages = {}
+
+    t = time.time()
+    Summarizer().run(bb, chapter=chapter)
+    stages["summarize"] = round(time.time() - t, 1)
+
+    t = time.time()
+    StatusCardUpdater().run(bb, chapter=chapter)
+    stages["update_status_card"] = round(time.time() - t, 1)
+
+    t = time.time()
+    HookKeeper().run(bb, chapter=chapter)
+    stages["update_hook_ledger"] = round(time.time() - t, 1)
+
+    if setting_has_resource_schema(bb):
+        t = time.time()
+        ResourceLedger().run(bb, chapter=chapter)
+        stages["update_resource_ledger"] = round(time.time() - t, 1)
+
+    if is_arc_boundary(chapter):
+        t = time.time()
+        ArcSummarizer().run(bb, chapter=chapter)
+        stages["arc_summarize"] = round(time.time() - t, 1)
+
+    if is_volume_boundary(chapter):
+        t = time.time()
+        BookSummarizer().run(bb, chapter=chapter)
+        stages["book_summarize"] = round(time.time() - t, 1)
+
+    return {
+        "chapter": chapter,
+        "stage": "bookkeeping",
+        "stages": stages,
+        "duration_s": round(time.time() - t0, 1),
+    }
+
+
 def run_packaging(bb: Blackboard) -> dict:
     """Run PackagingAgent once to produce state/packaging.json."""
     t0 = time.time()
@@ -241,10 +326,22 @@ def run_packaging(bb: Blackboard) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Blackboard novel pipeline runner")
     grp = parser.add_mutually_exclusive_group(required=True)
-    grp.add_argument("--chapter", type=int, help="run one chapter")
+    grp.add_argument("--chapter", type=int, help="run one chapter (full pipeline)")
     grp.add_argument("--range", type=str, help="run chapters N-M (e.g. 1-3)")
-    grp.add_argument("--audit-only", type=int, metavar="N", dest="audit_only")
+    grp.add_argument("--audit-only", type=int, metavar="N", dest="audit_only",
+                     help="rerun AISlopGuard + CharacterGuard on chapter N")
     grp.add_argument("--packaging", action="store_true", help="run PackagingAgent to produce state/packaging.json")
+    # Intent Router (C-22): rerun individual stages without full pipeline
+    grp.add_argument("--plan-only", type=int, metavar="N", dest="plan_only",
+                     help="(Intent: plan) regenerate plan.json for chapter N only")
+    grp.add_argument("--write-only", type=int, metavar="N", dest="write_only",
+                     help="(Intent: write) regenerate prose from existing plan.json only")
+    grp.add_argument("--evaluate-only", type=int, metavar="N", dest="evaluate_only",
+                     help="(Intent: evaluate) re-run Evaluator on chapter N only")
+    grp.add_argument("--fix-only", type=int, metavar="N", dest="fix_only",
+                     help="(Intent: fix) run Fixer once from existing verdict.json")
+    grp.add_argument("--bookkeeping-only", type=int, metavar="N", dest="bookkeeping_only",
+                     help="(Intent: bookkeeping) refresh summary + status card + hooks + ledger from existing prose")
     args = parser.parse_args()
 
     bb = Blackboard()
@@ -257,6 +354,19 @@ def main():
     if args.audit_only is not None:
         print(json.dumps(run_audit_only(bb, args.audit_only), ensure_ascii=False, indent=2))
         return
+
+    # Intent-routed single-stage commands
+    for flag, fn in (
+        ("plan_only", run_plan_only),
+        ("write_only", run_write_only),
+        ("evaluate_only", run_evaluate_only),
+        ("fix_only", run_fix_only),
+        ("bookkeeping_only", run_bookkeeping_only),
+    ):
+        val = getattr(args, flag, None)
+        if val is not None:
+            print(json.dumps(fn(bb, val), ensure_ascii=False, indent=2))
+            return
 
     chapters = (
         [args.chapter] if args.chapter else list(_range_to_list(args.range))
