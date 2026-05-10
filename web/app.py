@@ -1,4 +1,4 @@
-"""Flask web demo for the Blackboard Novel Pipeline.
+"""Flask web demo for the Novelforge.
 
 Exists purely to make the architecture visible to humans in real time:
   - Left: the state/ filesystem as the single source of truth

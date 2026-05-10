@@ -5,7 +5,7 @@
 >
 > 审阅日期：2026-05-10（MVP 提交后）
 > 审阅者：Oracle（第三轮评审）
-> 前两轮评审：docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md § Oracle 事前/事后评审
+> 前两轮评审：docs/superpowers/specs/2026-05-09-novelforge-design.md § Oracle 事前/事后评审
 
 ---
 

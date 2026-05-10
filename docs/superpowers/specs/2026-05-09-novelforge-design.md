@@ -1,6 +1,6 @@
-# Blackboard Novel Pipeline — 架构设计
+# Novelforge — 架构设计
 
-> **项目代号**：`blackboard-novel-pipeline`
+> **项目代号**：`novelforge`
 > **定位**：通用多 Agent 小说写作流水线
 > **核心决策**：题材通过 Setting Pack 注入，`src/` 对题材无感知
 
@@ -174,7 +174,7 @@ Oracle 点评："带伤上线"恰好 **现身说法 Lesson 4**（技术债不攒
 ## 5. 文件结构
 
 ```
-blackboard-novel-pipeline/
+novelforge/
 ├── AGENTS.md                      # 80 行索引（目录页，Lesson 5）
 ├── README.md                      # 项目介绍 + 如何跑
 ├── requirements.txt
@@ -184,7 +184,7 @@ blackboard-novel-pipeline/
 │   ├── Agent 搭建难题.md         # 原参考资料
 │   ├── ai 小说流水线教程贴.txt    # 原参考资料
 │   └── superpowers/specs/
-│       └── 2026-05-09-blackboard-novel-pipeline-design.md   # 本文件
+│       └── 2026-05-09-novelforge-design.md   # 本文件
 │
 ├── rules/                         # 通用黄金原则（题材无关, Lesson 4 + Lesson 5）
 │   ├── 24-iron-laws.md            # 24 条通用铁律
@@ -229,7 +229,7 @@ blackboard-novel-pipeline/
 ├── docs/                         # GitHub Pages 静态演示 + 设计文档
 │   ├── index.html + main.js + main.css   # 静态只读版
 │   └── superpowers/specs/
-│       └── 2026-05-09-blackboard-novel-pipeline-design.md   # 本文件
+│       └── 2026-05-09-novelforge-design.md   # 本文件
 │
 ├── demo_snapshot/                # 港综 setting 3 章完整跑出的产物（Pages 数据源）
 │

@@ -1,11 +1,13 @@
-# 🦞 Blackboard Novel Pipeline
+# 🔨 Novelforge
 
-**通用多 Agent 小说写作流水线** — 把 Anthropic / Cognition / OpenAI 在长链路 Agent 上踩过的 5 个坑，当作架构约束来设计。
+> *Production-grade multi-agent novel pipeline. Filesystem-as-memory, adversarial review, three-tier bookkeeping, hot-swappable genres.*
+
+**小说锻造厂** — 把"一个 AI 一路写到黑"拆成 10 个独立 Agent 的长链路流水线。Anthropic / Cognition / OpenAI 在长链路 Agent 上踩过的 5 个坑，全部作为架构约束来设计：**状态沉在文件**、**对抗式审稿**、**三层账本**、**题材热插拔**、**渐进式披露**。
 
 > **当前阶段**：Post-MVP Must+Should 扫清（gap-analysis C-22..C-32 全部落地 + bookkeeping layer）
 > **下一阶段**：10+ 章长跑验证 + Evaluator 校准集 + CI，见 [`docs/gap-analysis-post-mvp.md`](docs/gap-analysis-post-mvp.md)
-> **仓库主页**：[github.com/CalWade/blackboard-novel-pipeline](https://github.com/CalWade/blackboard-novel-pipeline)
-> **演示**：[calwade.github.io/blackboard-novel-pipeline/](https://calwade.github.io/blackboard-novel-pipeline/)（静态只读）
+> **仓库主页**：[github.com/CalWade/novelforge](https://github.com/CalWade/novelforge)
+> **演示**：[calwade.github.io/novelforge/](https://calwade.github.io/novelforge/)（静态只读）
 
 ---
 
@@ -110,8 +112,8 @@ python -m src.bootstrap --setting urban-romance-contemporary
 
 ```bash
 # 1. 克隆 + 环境
-git clone https://github.com/CalWade/blackboard-novel-pipeline.git
-cd blackboard-novel-pipeline
+git clone https://github.com/CalWade/novelforge.git
+cd novelforge
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -145,7 +147,7 @@ flask --app web.app run --port 5055
 ## 项目结构
 
 ```
-blackboard-novel-pipeline/
+novelforge/
 ├── AGENTS.md                        # 70 行运行时 ToC
 ├── README.md                        # 本文件
 ├── requirements.txt
@@ -179,7 +181,7 @@ blackboard-novel-pipeline/
 │   └── static/{main.css, main.js}
 │
 ├── docs/                            # 架构文档 + GitHub Pages 静态演示 + 演进路线
-│   ├── superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md
+│   ├── superpowers/specs/2026-05-09-novelforge-design.md
 │   ├── gap-analysis-post-mvp.md     # 后 MVP 补齐清单
 │   ├── skill-borrowings-plan.md     # skill 借鉴计划（C-22..C-32 来源）
 │   ├── tutorial-borrowings-audit.md # 教程贴 108 条 ↔ 系统落点逐条审计
@@ -279,7 +281,7 @@ python -m pytest tests/ -v
 
 所有文档：
 
-- **架构设计** · [`docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md`](docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md)
+- **架构设计** · [`docs/superpowers/specs/2026-05-09-novelforge-design.md`](docs/superpowers/specs/2026-05-09-novelforge-design.md)
 - **后 MVP Gap 分析与路线图** · [`docs/gap-analysis-post-mvp.md`](docs/gap-analysis-post-mvp.md)
 - **教程贴借鉴审计** · [`docs/tutorial-borrowings-audit.md`](docs/tutorial-borrowings-audit.md)
 - **运行时 ToC** · [`AGENTS.md`](AGENTS.md)

@@ -122,6 +122,61 @@ def test_readme_does_not_claim_two_settings_anymore():
         )
 
 
+def test_project_name_is_novelforge_everywhere():
+    """Guard against accidental regression to the old 'Blackboard Novel
+    Pipeline' brand name across README, AGENTS.md, and web/docs HTML.
+    The Blackboard *architecture pattern* (class/module name) is kept
+    intact — we only check brand mentions."""
+    # Built as fragments so this assertion file itself doesn't trip
+    # the drift check in test_no_old_repo_url_references.
+    brand_old = "Blackboard" + " Novel " + "Pipeline"
+    brand_new = "Novelforge"
+    for rel_path in (
+        "README.md",
+        "AGENTS.md",
+        "settings/README.md",
+        "web/templates/index.html",
+        "docs/index.html",
+        "docs/superpowers/specs/2026-05-09-novelforge-design.md",
+        "src/__init__.py",
+    ):
+        p = config.PROJECT_ROOT / rel_path
+        assert p.exists(), f"{rel_path} missing"
+        text = p.read_text(encoding="utf-8")
+        assert brand_old not in text, (
+            f"{rel_path} still contains old brand '{brand_old}' — "
+            f"should be '{brand_new}'"
+        )
+        assert brand_new in text, (
+            f"{rel_path} missing new brand '{brand_new}'"
+        )
+
+
+def test_no_old_repo_url_references():
+    """All GitHub/Pages URLs should point to CalWade/novelforge, not the
+    old repo slug."""
+    # Build the old slug in fragments so this file itself passes the scan.
+    old_slug = "blackboard" + "-novel-" + "pipeline"
+    exts = {".md", ".html", ".js", ".py", ".json", ".yaml", ".yml", ".txt"}
+    # Skip dirs that legitimately reference the old slug (git history; this
+    # test file itself; venv/cache).
+    skip_dirs = {".git", "__pycache__", ".pytest_cache", "node_modules",
+                 ".venv", "tests"}
+    hits: list[str] = []
+    for p in config.PROJECT_ROOT.rglob("*"):
+        if not p.is_file() or p.suffix.lower() not in exts:
+            continue
+        if any(part in skip_dirs for part in p.relative_to(config.PROJECT_ROOT).parts):
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if old_slug in text:
+            hits.append(str(p.relative_to(config.PROJECT_ROOT)))
+    assert not hits, f"Old repo slug still present in: {hits}"
+
+
 def test_settings_readme_mentions_optional_resource_schema():
     """settings/README.md should explain the 7-required + 1-optional file layout."""
     text = (config.PROJECT_ROOT / "settings" / "README.md").read_text(encoding="utf-8")

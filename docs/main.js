@@ -1,5 +1,5 @@
 /* =========================================================
-   Blackboard Novel Pipeline — STATIC demo UI (GitHub Pages)
+   Novelforge — STATIC demo UI (GitHub Pages)
    Vanilla JS. No bundler, no framework, no server.
    Reads files directly from ../demo_snapshot/, ../rules/, ../AGENTS.md.
    ========================================================= */
@@ -52,7 +52,7 @@ const AGENT_LABEL = {
 };
 
 // ---------- LESSONS (pitch crosswalk: principle → code) ----------
-const REPO_URL = 'https://github.com/CalWade/blackboard-novel-pipeline';
+const REPO_URL = 'https://github.com/CalWade/novelforge';
 const LESSONS = [
   {
     n: 1,
@@ -377,7 +377,7 @@ function renderBrandSub() {
 
   // Page title too
   if (novel.title) {
-    document.title = `Blackboard Novel Pipeline · ${novel.title} · 静态演示`;
+    document.title = `Novelforge · ${novel.title} · 静态演示`;
   }
 }
 

@@ -1,4 +1,4 @@
-"""Blackboard Novel Pipeline — generic multi-agent novel writing.
+"""Novelforge — generic multi-agent novel writing.
 
 Genre is injected via `settings/<name>/`; `src/` is genre-agnostic.
 """

@@ -1,5 +1,5 @@
 /* =========================================================
-   Blackboard Novel Pipeline — demo UI
+   Novelforge — demo UI
    Vanilla JS. No bundler, no framework. Fetch + DOM.
    ========================================================= */
 
@@ -35,7 +35,7 @@ const AGENT_LABEL = {
 };
 
 // ---------- LESSONS (pitch crosswalk: principle → code) ----------
-const REPO_URL = 'https://github.com/CalWade/blackboard-novel-pipeline';
+const REPO_URL = 'https://github.com/CalWade/novelforge';
 const LESSONS = [
   {
     n: 1,
@@ -275,7 +275,7 @@ function renderBrandSub() {
   elBrand.textContent = parts.join(' · ');
 
   if (novel.title) {
-    document.title = `Blackboard Novel Pipeline · ${novel.title}`;
+    document.title = `Novelforge · ${novel.title}`;
   }
 }
 

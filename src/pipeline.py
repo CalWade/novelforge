@@ -324,7 +324,7 @@ def run_packaging(bb: Blackboard) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Blackboard novel pipeline runner")
+    parser = argparse.ArgumentParser(description="Novelforge runner")
     grp = parser.add_mutually_exclusive_group(required=True)
     grp.add_argument("--chapter", type=int, help="run one chapter (full pipeline)")
     grp.add_argument("--range", type=str, help="run chapters N-M (e.g. 1-3)")

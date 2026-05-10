@@ -30,7 +30,7 @@ python -m src.pipeline --chapter 1
 
 ## 架构 1 行说明
 
-每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md](docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md)。
+每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-novelforge-design.md](docs/superpowers/specs/2026-05-09-novelforge-design.md)。
 
 ## Setting 系统
 

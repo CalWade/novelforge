@@ -5,7 +5,7 @@
 
 ## 项目目标
 
-**通用多 Agent 小说写作流水线**。外层 Pipeline + 内层 Blackboard + Auditor Fan-Out + Evaluator 半 Debate。
+**Novelforge · 小说锻造厂** — 通用多 Agent 小说写作流水线。外层 Pipeline + 内层 Blackboard + Auditor Fan-Out + Evaluator 半 Debate + Lesson-3 三层 Bookkeeping。
 
 题材通过 **Setting Pack** 注入（见 `settings/`），流水线本身（`src/`）对题材一无所知。
 
@@ -30,7 +30,7 @@ python -m src.pipeline --chapter 1
 
 ## 架构 1 行说明
 
-每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md](docs/superpowers/specs/2026-05-09-blackboard-novel-pipeline-design.md)。
+每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-novelforge-design.md](docs/superpowers/specs/2026-05-09-novelforge-design.md)。
 
 ## Setting 系统
 
