@@ -72,9 +72,23 @@ class Generator(BaseAgent):
         era_label = setting.get("era", "")
         tone = setting.get("tone", "")
 
+        # Style lock — the non-negotiable "must NOT drift into" list.
+        # Source: skill #24 — long-chain writing drifts easily; declare
+        # prohibited voices explicitly at the top of every Generator call.
+        prohibited_styles = setting.get("prohibited_styles", []) or []
+        if prohibited_styles:
+            prohibited_block = "\n".join(f"- {s}" for s in prohibited_styles)
+        else:
+            prohibited_block = "- （本 setting 未声明风格禁止清单）"
+
         system = (
             f"你是一名职业网文作家。本次创作的题材与基调由下方 setting 决定，\n"
             f"你的任务：把节拍表写成约 3000 字的中文章节正文。\n"
+            f"\n"
+            f"# 风格锁定（不可逾越的基调下限）\n"
+            f"本作品属于：{genre}，基调：{tone}。\n"
+            f"**严禁跨题材串味**，以下风格任何一条都视为基调崩坏：\n"
+            f"{prohibited_block}\n"
             f"\n"
             f"# 当前 Setting\n"
             f"- 题材：{genre}\n"
