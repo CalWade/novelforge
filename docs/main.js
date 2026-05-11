@@ -1,8 +1,9 @@
 /* =========================================================
    Novelforge — STATIC demo UI (GitHub Pages)
    Vanilla JS. No bundler, no framework, no server.
-   Reads files directly from ./demo_snapshot*/, ./rules/, ./AGENTS.md.
-   (All served under docs/ which is the Pages root.)
+   Reads files directly from ./demo_snapshot/ (and siblings),
+   ./rules/, ./AGENTS.md — all served under docs/ which is the
+   Pages root.
    ========================================================= */
 
 'use strict';
