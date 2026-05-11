@@ -196,6 +196,9 @@ def api_project_new():
     from src import bootstrap
     try:
         project_dir = bootstrap.create_project(pid, genre, overwrite=overwrite)
+    except ValueError as e:
+        # invalid id/genre (e.g. path-traversal attempt) — hard reject
+        return jsonify({"ok": False, "reason": str(e)}), 400
     except FileNotFoundError as e:
         return jsonify({"ok": False, "reason": str(e)}), 400
     except FileExistsError as e:

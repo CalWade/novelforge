@@ -156,3 +156,37 @@ def test_new_project_creates_and_then_rejects_duplicate(client, tmp_path, monkey
         json={"id": "temp-new-xyz", "genre": "gangster-hk-1983", "overwrite": True},
     )
     assert resp3.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "../../../tmp/pwn",          # parent escape
+        "/tmp/pwn",                   # absolute path
+        "foo/bar",                    # nested path
+        "-leading-hyphen",            # leading hyphen (disallowed)
+        ".hidden",                    # leading dot
+        "Capital",                    # uppercase
+        "has space",                  # space
+        "",                           # empty
+        "a" * 65,                     # too long
+    ],
+)
+def test_new_project_rejects_unsafe_ids(client, bad_id):
+    """Path-traversal / malformed ids must be rejected with 400, never written to disk."""
+    resp = client.post(
+        "/api/projects/new",
+        json={"id": bad_id, "genre": "gangster-hk-1983"},
+    )
+    assert resp.status_code == 400, f"id={bad_id!r} was accepted unexpectedly"
+    assert resp.get_json()["ok"] is False
+
+
+def test_activate_rejects_unsafe_id(client):
+    """Activate must reject path-traversal ids before touching the filesystem."""
+    resp = client.post(
+        "/api/projects/activate",
+        json={"id": "../../../tmp/pwn"},
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False

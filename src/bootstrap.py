@@ -81,6 +81,27 @@ PROJECT_REQUIRED_FILES = [
 ]
 
 
+# Identifiers must be filesystem-safe and cannot be used for path traversal.
+# Lowercase letters, digits, underscore, hyphen; length 1-64; cannot start with
+# hyphen or dot. Matches the conventions used by the built-in genres/projects.
+import re as _re
+_VALID_ID_RE = _re.compile(r"^[a-z0-9_][a-z0-9_-]{0,63}$")
+
+
+def _validate_id(kind: str, value: str) -> None:
+    """Reject ids that could escape the genres/ or projects/ sandbox.
+
+    Called from the public API surfaces (bootstrap_project, create_project) so
+    both the CLI and Web routes are protected. Raises ValueError with a clear
+    message; callers map it to HTTP 400 / CLI error.
+    """
+    if not isinstance(value, str) or not _VALID_ID_RE.match(value):
+        raise ValueError(
+            f"invalid {kind} id {value!r}: must match [a-z0-9_][a-z0-9_-]* "
+            f"(1-64 chars, no path separators, no leading hyphen/dot)"
+        )
+
+
 # -----------------------------------------------------------------------------
 # Public API — used by Web UI / CLI / tests
 # -----------------------------------------------------------------------------
@@ -146,6 +167,7 @@ def bootstrap_project(project_id: str) -> BootstrapResult:
 
     Raises FileNotFoundError / ValueError for validation problems.
     """
+    _validate_id("project", project_id)
     project_dir = config.PROJECTS_DIR / project_id
     if not project_dir.exists():
         raise FileNotFoundError(
@@ -250,6 +272,8 @@ def create_project(project_id: str, genre_id: str, *, overwrite: bool = False) -
 
     Returns the new project dir.
     """
+    _validate_id("project", project_id)
+    _validate_id("genre", genre_id)
     genre_dir = config.GENRES_DIR / genre_id
     if not genre_dir.exists():
         raise FileNotFoundError(
