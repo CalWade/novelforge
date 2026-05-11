@@ -120,6 +120,29 @@ def refresh_state_dir() -> Path:
     return STATE_DIR
 
 
+def reload_env() -> None:
+    """Re-read .env and update module-level LLM/Perplexity config globals.
+
+    Safe to call from the Web UI after writing new keys. Because llm.py and
+    websearch.py always dereference `config.X` at call time (not at import),
+    updates take effect on the next LLM call in the same process.
+    """
+    global LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+    global PERPLEXITY_API_KEY, PERPLEXITY_BASE_URL, PERPLEXITY_MODEL
+
+    load_dotenv(_PROJECT_ROOT / ".env", override=True)
+    LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+    LLM_BASE_URL = os.environ.get(
+        "DEEPSEEK_BASE_URL", "https://work-api-srv.easyclaw.cn/v1"
+    ).rstrip("/")
+    LLM_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
+    PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
+    PERPLEXITY_BASE_URL = os.environ.get(
+        "PERPLEXITY_BASE_URL", "https://work-api-srv.easyclaw.cn/api/v1/search"
+    ).rstrip("/")
+    PERPLEXITY_MODEL = os.environ.get("PERPLEXITY_MODEL", "perplexity/sonar-pro")
+
+
 def assert_llm_configured() -> None:
     """Raise a helpful error early if the API key is missing."""
     if not LLM_API_KEY or LLM_API_KEY.startswith("dc-sk-put-yours"):
