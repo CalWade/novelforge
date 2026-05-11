@@ -1,22 +1,27 @@
-"""Setting Lint — validate a setting pack's structure, schema, and cross-references.
+"""Setting Lint — validate a genre + project pair's structure.
 
-Usage:
-    python -m src.tools.setting_lint --setting gangster-hk-1983
+Usage (new two-layer CLI):
+    python -m src.tools.setting_lint --genre gangster-hk-1983
+    python -m src.tools.setting_lint --project gangster-hk-1983-linjiayao
     python -m src.tools.setting_lint --all
-    python -m src.tools.setting_lint --setting xianxia-ascension --strict
+    python -m src.tools.setting_lint --all --strict
+
+Legacy usage (pre-refactor, still works if the genre id happens to match
+an old unified `settings/<name>/` path OR a bootstrapped `state/` dir):
+    python -m src.tools.setting_lint --setting <path>
 
 Levels:
     ERROR   — must fix; pipeline won't run correctly
     WARNING — should fix; degrades quality
-    INFO    — suggestion; for setting authors
+    INFO    — suggestion for the author
 
 Exit codes:
     0  no errors (warnings allowed unless --strict)
     1  has errors (or has warnings + --strict)
-    2  setting not found / arg error
+    2  pack not found / arg error
 
-Checks performed:
-    1. File presence: all 7 required files exist
+Checks performed on a UNIFIED (genre + project merged) view:
+    1. File presence: all 7 required files + optional resource_schema
     2. Parseability: YAML / JSON parse successfully
     3. Schema: each file has the required top-level fields
     4. Cross-references:
@@ -30,15 +35,15 @@ Checks performed:
        - outline.json first 3 chapters fully beat-sheeted (黄金三章)
     6. Hygiene:
        - no 'MVP' / '黑客松' / 'hackathon' meta-speak in any *.md
-       - no repetition of rules/writing-style-core.md content in
-         writing-style-extra.md (avoid duplication)
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -220,13 +225,17 @@ def lint_setting(setting_dir: Path) -> LintReport:
         for f in REQUIRED_SETTING_FIELDS:
             if f not in setting_yaml:
                 report.error("setting.yaml", f"missing required field: {f}")
-        # id should match directory name for clarity
-        if setting_yaml.get("id") and setting_yaml["id"] != name:
-            report.warning(
-                "setting.yaml",
-                f"id='{setting_yaml['id']}' doesn't match dir name '{name}' "
-                "(reproducibility: bootstrap --setting <dir> uses dir name)",
-            )
+        # id should match directory name for clarity.
+        # Skip this check when linting a synthesized unified view (dir name
+        # is a tempdir like 'unified', not the real pack id).
+        is_synthesized = name == "unified" or name.startswith("lint_unified_")
+        if not is_synthesized:
+            if setting_yaml.get("id") and setting_yaml["id"] != name:
+                report.warning(
+                    "setting.yaml",
+                    f"id='{setting_yaml['id']}' doesn't match dir name '{name}' "
+                    "(reproducibility: bootstrap --setting <dir> uses dir name)",
+                )
 
     # Check 3b: outline.json schema
     if not isinstance(outline, dict):
@@ -530,12 +539,192 @@ def _character_known(name: str, known_names: set[str]) -> bool:
 
 # --- CLI ---
 
+
+def lint_project(project_id: str) -> LintReport:
+    """Lint a project by merging its genre + project files into a temp
+    'unified view' directory and running the legacy lint_setting on it.
+
+    This preserves the full set of existing checks without rewriting them.
+    The temp dir is auto-cleaned after the report is built.
+    """
+    # Lazy import to avoid circular (bootstrap imports config which imports here)
+    from .. import bootstrap
+
+    project_dir = config.PROJECTS_DIR / project_id
+    if not project_dir.exists():
+        report = LintReport(setting_name=project_id)
+        report.error(
+            f"projects/{project_id}",
+            f"project directory not found at {project_dir}",
+        )
+        return report
+
+    # Synthesize a setting/-shaped unified view in a tmp dir
+    missing_proj = bootstrap.validate_project(project_dir)
+    if missing_proj:
+        report = LintReport(setting_name=project_id)
+        for f in missing_proj:
+            report.error(f"projects/{project_id}/{f}", "required file missing")
+        return report
+
+    try:
+        project_yaml = yaml.safe_load(
+            (project_dir / "project.yaml").read_text(encoding="utf-8")
+        )
+    except yaml.YAMLError as e:
+        report = LintReport(setting_name=project_id)
+        report.error(f"projects/{project_id}/project.yaml", f"YAML parse failed: {e}")
+        return report
+
+    genre_id = project_yaml.get("genre") if isinstance(project_yaml, dict) else None
+    if not genre_id:
+        report = LintReport(setting_name=project_id)
+        report.error(
+            f"projects/{project_id}/project.yaml",
+            "missing required field: genre",
+        )
+        return report
+
+    genre_dir = config.GENRES_DIR / genre_id
+    if not genre_dir.exists():
+        report = LintReport(setting_name=project_id)
+        report.error(
+            f"projects/{project_id}/project.yaml",
+            f"declared genre '{genre_id}' not found at {genre_dir}",
+        )
+        return report
+
+    missing_genre = bootstrap.validate_genre(genre_dir)
+    if missing_genre:
+        report = LintReport(setting_name=f"{project_id} (genre {genre_id})")
+        for f in missing_genre:
+            report.error(f"genres/{genre_id}/{f}", "required file missing")
+        return report
+
+    # Build unified view in a temp dir, then run the legacy lint
+    with tempfile.TemporaryDirectory(prefix="lint_unified_") as tmp:
+        unified = Path(tmp) / "unified"
+        unified.mkdir()
+
+        # Copy genre files
+        for f in ["era.md", "writing-style-extra.md", "iron-laws-extra.md"]:
+            shutil.copy2(genre_dir / f, unified / f)
+        if (genre_dir / "resource_schema.yaml").exists():
+            shutil.copy2(genre_dir / "resource_schema.yaml",
+                         unified / "resource_schema.yaml")
+
+        # Copy project files
+        for f in ["outline.json", "characters.yaml", "timeline.yaml"]:
+            shutil.copy2(project_dir / f, unified / f)
+
+        # Synthesize unified setting.yaml using the same merger bootstrap uses
+        genre_yaml = yaml.safe_load(
+            (genre_dir / "genre.yaml").read_text(encoding="utf-8")
+        )
+        merged = bootstrap._merge_setting_metadata(genre_yaml, project_yaml)
+        (unified / "setting.yaml").write_text(
+            yaml.safe_dump(merged, allow_unicode=True, sort_keys=False,
+                           default_flow_style=False),
+            encoding="utf-8",
+        )
+
+        report = lint_setting(unified)
+        report.setting_name = f"{project_id}  (genre: {genre_id})"
+        return report
+
+
+def lint_genre(genre_id: str) -> LintReport:
+    """Lint a standalone genre pack. Does NOT require a project to lint."""
+    from .. import bootstrap
+
+    genre_dir = config.GENRES_DIR / genre_id
+    report = LintReport(setting_name=f"genre: {genre_id}")
+    if not genre_dir.exists():
+        report.error(f"genres/{genre_id}", f"directory not found at {genre_dir}")
+        return report
+
+    missing = bootstrap.validate_genre(genre_dir)
+    for f in missing:
+        report.error(f"genres/{genre_id}/{f}", "required file missing")
+    if missing:
+        return report
+
+    # Parse genre.yaml
+    try:
+        genre_yaml = yaml.safe_load(
+            (genre_dir / "genre.yaml").read_text(encoding="utf-8")
+        )
+    except yaml.YAMLError as e:
+        report.error(f"genres/{genre_id}/genre.yaml", f"YAML parse failed: {e}")
+        return report
+
+    if not isinstance(genre_yaml, dict):
+        report.error(f"genres/{genre_id}/genre.yaml", "top-level must be a mapping")
+        return report
+
+    # genre.yaml required fields
+    for f in ("id", "display_name", "genre", "era", "tone"):
+        if f not in genre_yaml:
+            report.error(f"genres/{genre_id}/genre.yaml", f"missing required field: {f}")
+    if genre_yaml.get("id") and genre_yaml["id"] != genre_id:
+        report.warning(
+            f"genres/{genre_id}/genre.yaml",
+            f"id='{genre_yaml['id']}' doesn't match dir name '{genre_id}'",
+        )
+
+    # Content thresholds (reuse same limits as unified lint)
+    era_path = genre_dir / "era.md"
+    if era_path.stat().st_size < MIN_ERA_CHARS:
+        report.warning(
+            f"genres/{genre_id}/era.md",
+            f"too thin (< {MIN_ERA_CHARS} chars); world-building likely weak",
+        )
+    style_path = genre_dir / "writing-style-extra.md"
+    if style_path.stat().st_size < MIN_STYLE_EXTRA_CHARS:
+        report.warning(
+            f"genres/{genre_id}/writing-style-extra.md",
+            f"too thin (< {MIN_STYLE_EXTRA_CHARS} chars)",
+        )
+    iron_path = genre_dir / "iron-laws-extra.md"
+    iron_text = iron_path.read_text(encoding="utf-8")
+    iron_count = len(re.findall(r"iron_law_(?:extra_)?\d+", iron_text))
+    if iron_count < MIN_EXTRA_IRON_LAWS:
+        report.warning(
+            f"genres/{genre_id}/iron-laws-extra.md",
+            f"only {iron_count} iron_law entries; recommend ≥ {MIN_EXTRA_IRON_LAWS}",
+        )
+
+    # Meta-speak hygiene
+    for fname in ("era.md", "writing-style-extra.md", "iron-laws-extra.md"):
+        content = (genre_dir / fname).read_text(encoding="utf-8")
+        for word in META_WORDS_BLOCKED_IN_SETTING_MD:
+            if word in content:
+                report.info(
+                    f"genres/{genre_id}/{fname}",
+                    f"contains project-meta word '{word}' — genre content should "
+                    "be in-world, not refer to the system project",
+                )
+
+    # Optional resource_schema
+    schema_path = genre_dir / "resource_schema.yaml"
+    if schema_path.exists():
+        _lint_resource_schema(schema_path, report)
+
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Lint a setting pack for completeness and consistency"
+        description="Lint a genre or project pack for completeness and consistency"
     )
-    parser.add_argument("--setting", help="Setting name under settings/")
-    parser.add_argument("--all", action="store_true", help="Lint every setting")
+    grp = parser.add_mutually_exclusive_group()
+    grp.add_argument("--genre", help="Genre id under genres/")
+    grp.add_argument("--project", help="Project id under projects/")
+    grp.add_argument("--all", action="store_true",
+                     help="Lint every genre + project")
+    # Legacy: tolerate --setting by treating it as a project id (first),
+    # else genre id. Aids backward-compat for old scripts / docs.
+    grp.add_argument("--setting", help="(deprecated) project id or genre id")
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -543,36 +732,42 @@ def main():
     )
     args = parser.parse_args()
 
-    settings_dir = config.PROJECT_ROOT / "settings"
+    reports: list[LintReport] = []
 
     if args.all:
-        targets = [
-            d for d in sorted(settings_dir.iterdir())
-            if d.is_dir() and (d / "setting.yaml").exists()
-        ]
+        for gid in _list_genre_ids():
+            reports.append(lint_genre(gid))
+        for pid in _list_project_ids():
+            reports.append(lint_project(pid))
+    elif args.genre:
+        reports.append(lint_genre(args.genre))
+    elif args.project:
+        reports.append(lint_project(args.project))
     elif args.setting:
-        target = settings_dir / args.setting
-        if not target.exists():
+        # Back-compat: first try as project id, then genre id
+        name = args.setting
+        if (config.PROJECTS_DIR / name).exists():
+            reports.append(lint_project(name))
+        elif (config.GENRES_DIR / name).exists():
+            reports.append(lint_genre(name))
+        else:
             print(
-                f"ERROR: setting '{args.setting}' not found under {settings_dir}",
+                f"ERROR: '{name}' not found under projects/ or genres/",
                 file=sys.stderr,
             )
             sys.exit(2)
-        targets = [target]
     else:
-        parser.error("specify --setting <name> or --all")
+        parser.error("specify --genre / --project / --all / --setting <name>")
 
     total_errors = 0
     total_warnings = 0
-
-    for setting_dir in targets:
-        report = lint_setting(setting_dir)
+    for report in reports:
         print(report.render())
         total_errors += report.n_errors
         total_warnings += report.n_warnings
 
     print(f"\n=== Overall ===")
-    print(f"  settings checked: {len(targets)}")
+    print(f"  packs checked   : {len(reports)}")
     print(f"  total errors    : {total_errors}")
     print(f"  total warnings  : {total_warnings}")
 
@@ -582,6 +777,25 @@ def main():
         print("  (--strict: warnings count as failures)")
         sys.exit(1)
     sys.exit(0)
+
+
+def _list_genre_ids() -> list[str]:
+    if not config.GENRES_DIR.exists():
+        return []
+    return sorted(
+        p.name for p in config.GENRES_DIR.iterdir()
+        if p.is_dir() and (p / "genre.yaml").exists()
+    )
+
+
+def _list_project_ids() -> list[str]:
+    if not config.PROJECTS_DIR.exists():
+        return []
+    return sorted(
+        p.name for p in config.PROJECTS_DIR.iterdir()
+        if p.is_dir() and not p.name.startswith(".")
+        and (p / "project.yaml").exists()
+    )
 
 
 if __name__ == "__main__":

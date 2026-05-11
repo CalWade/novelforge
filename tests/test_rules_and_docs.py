@@ -69,19 +69,40 @@ def test_agents_md_state_map_mentions_optional_resource_schema():
     assert "可选" in window or "optional" in window.lower()
 
 
-# -------- setting lint still passes on all real settings --------
+# -------- setting lint still passes on all real genres + projects --------
+
 
 @pytest.mark.parametrize(
-    "setting_name",
+    "genre_id",
     ["gangster-hk-1983", "xianxia-ascension", "urban-romance-contemporary"],
 )
-def test_real_settings_pass_lint(setting_name):
-    from src.tools.setting_lint import lint_setting
-    r = lint_setting(config.PROJECT_ROOT / "settings" / setting_name)
-    assert r.n_errors == 0, f"{setting_name} lint errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
+def test_real_genres_pass_lint(genre_id):
+    from src.tools.setting_lint import lint_genre
+    r = lint_genre(genre_id)
+    assert r.n_errors == 0, (
+        f"{genre_id} genre lint errors: "
+        f"{[i.message for i in r.issues if i.level == 'ERROR']}"
+    )
 
 
-# -------- README / settings/README / AGENTS.md doc freshness --------
+@pytest.mark.parametrize(
+    "project_id",
+    [
+        "gangster-hk-1983-linjiayao",
+        "xianxia-ascension-peichangning",
+        "urban-romance-shenruowei",
+    ],
+)
+def test_real_projects_pass_lint(project_id):
+    from src.tools.setting_lint import lint_project
+    r = lint_project(project_id)
+    assert r.n_errors == 0, (
+        f"{project_id} project lint errors: "
+        f"{[i.message for i in r.issues if i.level == 'ERROR']}"
+    )
+
+
+# -------- README / genres/README / projects/README / AGENTS.md doc freshness --------
 
 def test_readme_lists_all_three_settings():
     """Top-level README must mention all 3 real settings."""
@@ -134,7 +155,8 @@ def test_project_name_is_novelforge_everywhere():
     for rel_path in (
         "README.md",
         "AGENTS.md",
-        "settings/README.md",
+        "genres/README.md",
+        "projects/README.md",
         "web/templates/index.html",
         "docs/index.html",
         "docs/superpowers/specs/2026-05-09-novelforge-design.md",
@@ -177,9 +199,9 @@ def test_no_old_repo_url_references():
     assert not hits, f"Old repo slug still present in: {hits}"
 
 
-def test_settings_readme_mentions_optional_resource_schema():
-    """settings/README.md should explain the 7-required + 1-optional file layout."""
-    text = (config.PROJECT_ROOT / "settings" / "README.md").read_text(encoding="utf-8")
+def test_genres_readme_mentions_optional_resource_schema():
+    """genres/README.md should explain the required files + optional resource_schema."""
+    text = (config.PROJECT_ROOT / "genres" / "README.md").read_text(encoding="utf-8")
     assert "resource_schema.yaml" in text
     assert "可选" in text or "optional" in text.lower()
     # Table row for urban-romance
@@ -188,9 +210,11 @@ def test_settings_readme_mentions_optional_resource_schema():
 
 def test_agents_md_mentions_optional_resource_schema():
     text = (config.PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    # Setting section explains 7 + 1 optional
-    assert "7 个必需文件" in text or "7 个文件" in text
-    # Must also call out the optional flag so readers don't assume 8 are required
+    # AGENTS.md explains the two-layer architecture (genres + projects)
+    assert "genres/" in text
+    assert "projects/" in text
+    # Must call out that resource_schema.yaml is optional so readers don't
+    # assume it's mandatory
     idx = text.find("resource_schema.yaml")
     assert idx >= 0
     window = text[max(0, idx - 200):idx + 200]

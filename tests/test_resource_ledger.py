@@ -133,11 +133,11 @@ def test_read_helper_missing_branch(bb):
     "setting_name",
     ["gangster-hk-1983", "xianxia-ascension"],
 )
-def test_real_settings_resource_schema_is_valid_yaml(setting_name):
-    """Settings that declare resource schemas must have valid YAML with required structure."""
+def test_real_genres_resource_schema_is_valid_yaml(setting_name):
+    """Genres that declare resource schemas must have valid YAML with required structure."""
     import yaml
     from src import config
-    schema_path = config.PROJECT_ROOT / "settings" / setting_name / "resource_schema.yaml"
+    schema_path = config.GENRES_DIR / setting_name / "resource_schema.yaml"
     data = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     assert "resources" in data

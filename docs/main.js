@@ -122,7 +122,7 @@ const LESSONS = [
     principle: '黄金原则沉仓库 · 后台 Agent 定期扫 · 带债上线',
     impl: [
       'rules/*.md 是黄金原则 (24 iron laws + 18 landmines, 通用)',
-      'settings/<name>/iron-laws-extra.md: 题材特有铁律 (setting 注入)',
+      'genres/<id>/iron-laws-extra.md: 题材特有铁律 (genre 层)',
       '2 个 Auditor 并行独立会话扫每一章 → state/fixes/chNNN.*-patch.md (类 PR)',
       'Evaluator 2 次 retry 仍不过 → shipped_with_debt, 写 debt.jsonl 不死循环',
     ],
@@ -141,13 +141,13 @@ const LESSONS = [
     principle: 'AGENTS.md 目录页 · 详细拆到子文档 · Progressive Disclosure',
     impl: [
       'AGENTS.md 仅 ~70 行, 纯索引 + 规则映射表',
-      'rules/ 下 3 份通用规则 + settings/<name>/ 下 3 份题材规则',
+      'rules/ 下 4 份通用规则 + genres/<id>/ 下 3 份题材规则',
       '每个 Agent 只加载它需要的那 1-2 份 (见 AGENTS.md 规则索引)',
     ],
     code_pointers: [
       { label: 'AGENTS.md',  desc: '70 行目录页, 规则按 agent 分派', github_path: 'AGENTS.md', logical_path: 'AGENTS.md' },
       { label: 'rules/',     desc: '3 份通用规则 (题材无关)',        github_path: 'rules',     logical_path: null },
-      { label: 'settings/',  desc: '题材包目录, 每个 7 文件',        github_path: 'settings',  logical_path: null },
+      { label: 'genres/ + projects/', desc: '题材层 + 作品层（2026-05 重构）', github_path: 'genres', logical_path: null },
     ],
   },
 ];

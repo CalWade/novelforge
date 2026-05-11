@@ -36,7 +36,15 @@ Planner 拆节拍 → Generator 写正文 → Evaluator 挑刺 → Fixer 改稿 
 
 核心性质：**一个 Python 进程死了，换一个新进程，只要读 `state/current_status_card.md` 就能立刻知道**—— 刚才写到哪一章、主角当前什么状态、哪些伏笔还没回收。这是 Cognition 团队提出的「把上下文整个丢掉重读文件」（他们叫 Context Reset，中文可理解为"上下文重置"）的工程化落地。
 
-**题材 = 数据**：流水线本身（`src/`）对题材一无所知。题材通过 **Setting Pack（题材包）**（放在 `settings/<题材名>/`）注入——切换题材只需要重新跑一次初始化命令，不用改一行代码。内置三个题材：**港综 1983**、**仙侠飞升**、**都市言情·深圳**。
+**题材 = 数据**：流水线本身（`src/`）对题材一无所知。
+
+新架构（2026-05-11 重构）把"题材"和"作品"分两层：
+
+- **`genres/<id>/`** 是"什么是港综 / 仙侠 / 言情"的描述——多本书共享
+- **`projects/<id>/`** 是"这本书的主角叫林家耀、大纲是这样安排"的数据——每本独立
+
+切换作品只需要一行 `bootstrap` 命令，不用改任何代码。内置三组（题材 × 作品）：
+**港综 · 林家耀**、**仙侠 · 裴长宁**、**都市言情 · 沈若微**。
 
 ---
 
@@ -74,42 +82,63 @@ Evaluator：   半对抗辩论 — 对抗人设 + 结构化 JSON 评分表 + 骨
 | ① 反复失败、没有反馈链路 | Anthropic | 所有 Agent 无状态；失败写入 `issues.jsonl` + `debt.jsonl`；下一轮 Fixer 从文件读重新开一个干净会话 |
 | ② 自评过于乐观 | Anthropic | 五个独立 Agent + Evaluator **默认拒稿的"对抗人设"** + **结构化 JSON 评分表**（18 个雷点逐条打分）+ **骨架检测器**（防模型复制示例 prompt 里的 `…` 占位符） |
 | ③ 上下文焦虑（越写越慌） | Cognition | 每次调用都是**全新会话**；只读它需要的 1-2 个文件；Summarizer **独立会话**，只读最终章节正文，不读 plan/issues（防"立场后门"泄漏） |
-| ④ AI 味代码堆积 | OpenAI Codex | `rules/*.md` + `settings/<题材>/iron-laws-extra.md` 就是黄金原则；每章跑完自动触发 2 个后台 Auditor，产出独立补丁文件；Evaluator 两轮重试仍不过 → **带病上线**（写入 `debt.jsonl`，避免死循环） |
-| ⑤ 规则文件百科病 | OpenAI | `AGENTS.md` **只 70 行目录页**；详细拆到 `rules/` 通用 + `settings/<题材>/` 题材特有；每个 Agent 只加载它需要的那 1-2 份 |
+| ④ AI 味代码堆积 | OpenAI Codex | `rules/*.md` + `genres/<id>/iron-laws-extra.md` 就是黄金原则；每章跑完自动触发 2 个后台 Auditor，产出独立补丁文件；Evaluator 两轮重试仍不过 → **带病上线**（写入 `debt.jsonl`，避免死循环） |
+| ⑤ 规则文件百科病 | OpenAI | `AGENTS.md` **只 100 行目录页**；详细拆到 `rules/` 通用 + `genres/<id>/` 题材特有；每个 Agent 只加载它需要的那 1-2 份 |
 
 ---
 
-## Setting Pack — 题材即插即用
+## Genre + Project 两层架构（2026-05-11 重构）
 
-流水线对题材一无所知。题材通过 `settings/<题材名>/` 下的 7 + 1 个文件注入：
+历史原因，"题材包"之前是单层 `settings/<name>/`，同时承载**题材定义**和**单一作品数据**——
+单本书场景下没问题，但架构逻辑混乱。重构为两层：
+
+### `genres/<id>/` · 题材层（共享）
 
 ```
-settings/<题材名>/
-├── setting.yaml              # 元信息：题材名、基调、作者画像、禁用风格黑名单
-├── outline.json              # 整本大纲 + 每章节拍
-├── timeline.yaml             # 时代/世界观时间线
-├── characters.yaml           # 人物档案
-├── era.md                    # 时代/世界观事实包
-├── writing-style-extra.md    # 题材特有的写作风格
-├── iron-laws-extra.md        # 题材特有的铁律
-└── resource_schema.yaml      # [可选] 题材的可追踪资源定义（仙侠 / 港综有；都市言情无）
+genres/<id>/
+├── genre.yaml              # 必需 · 题材元信息 + author_persona_hints + prohibited_styles
+├── era.md                  # 必需 · 时代/世界观事实包
+├── writing-style-extra.md  # 必需 · 题材特有写作风格
+├── iron-laws-extra.md      # 必需 · 题材特有铁律
+└── resource_schema.yaml    # 可选 · 可追踪资源定义（仙侠/港综有；都市言情无）
 ```
 
-切换题材只需：
+### `projects/<id>/` · 作品层（每本独立）
+
+```
+projects/<id>/
+├── project.yaml            # 必需 · 声明基于哪个 genre + 本书主角/章数等
+├── outline.json            # 必需 · 本书大纲 + 每章节拍
+├── characters.yaml         # 必需 · 本书人物档案
+├── timeline.yaml           # 必需 · 本书时间线
+└── state/                  # 运行时产物（.gitignore）
+```
+
+### 切题材 / 新建一本书
 
 ```bash
-python -m src.bootstrap --setting urban-romance-contemporary
+# 查看所有可用题材和作品
+python -m src.bootstrap --list-genres
+python -m src.bootstrap --list
+
+# 激活某本书（把题材层 + 作品层文件合并到 projects/<id>/state/，供 Agent 读取）
+python -m src.bootstrap --project gangster-hk-1983-linjiayao
+
+# 新建一本基于现有题材的书（脚手架）
+python -m src.bootstrap --new-project my-book --genre gangster-hk-1983
+# 然后编辑 projects/my-book/project.yaml / outline.json / characters.yaml ...
+python -m src.bootstrap --project my-book
 ```
 
-内置三个题材：
+### 内置三组
 
-| 题材包 ID | 题材描述 | 状态 | 资源定义 | 产出目录 |
-|---|---|---|---|---|
-| `gangster-hk-1983` | 港综同人，1983 香港，福建新移民抵港白手起家 | ✅ 跑过 10 章 | ✅ 情报值 / 黑金 / 人情 / 仇家 | `demo_snapshot_gangster_c5_10ch/` |
-| `xianxia-ascension` | 仙侠修真，青龙历纪元，灵气复苏时代 | ✅ 跑过 3 章 | ✅ 灵石 / 灵草 / 境界 / 法器 / 因果 | `demo_snapshot_xianxia/` |
-| `urban-romance-contemporary` | 都市言情·2024 深圳科技园，30 岁产品经理的克制成人叙事 | ⚠️ 结构完整，未跑 LLM | ❌ 不做数值化（有意为之） | — |
+| 题材 | 作品 | 主角 | 状态 |
+|---|---|---|---|
+| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 跑过 10 章 |
+| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 跑过 3 章 |
+| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ⚠️ 未跑 LLM |
 
-详见 [`settings/README.md`](settings/README.md)。
+详见 [`genres/README.md`](genres/README.md) 和 [`projects/README.md`](projects/README.md)。
 
 ---
 
@@ -126,14 +155,18 @@ pip install -r requirements.txt
 cp .env.example .env
 # 在 .env 里填入 DEEPSEEK_API_KEY
 
-# 3. 选择并激活一个题材
-python -m src.bootstrap --list                       # 看所有可用题材
-python -m src.bootstrap --setting gangster-hk-1983   # 激活港综（或 xianxia-ascension）
+# 3. 激活一本书
+python -m src.bootstrap --list-genres                         # 看所有可用题材
+python -m src.bootstrap --list                                # 看所有可用作品
+python -m src.bootstrap --project gangster-hk-1983-linjiayao  # 激活"林家耀的故事"（港综）
+
+# 或者新建一本基于现有题材的书
+# python -m src.bootstrap --new-project my-book --genre gangster-hk-1983
 
 # 4. 跑流水线
 python -m src.pipeline --chapter 1     # 跑一章（全流水线）
 python -m src.pipeline --range 1-3     # 跑一到三章
-python -m src.pipeline --audit-only 1  # 只重跑 2 个 Auditor
+python -m src.pipeline --audit-only 1  # 只重跑 3 个 Auditor
 
 # 4b. 按阶段重跑（不烧全流水线预算）
 python -m src.pipeline --plan-only 3        # 只重做第 3 章节拍表
@@ -164,19 +197,29 @@ novelforge/
 │   ├── 18-landmines.md              # 18 个通用雷点（含高疲劳词黑名单）
 │   └── writing-style-core.md        # 通用写作风格（六步分析 + 代入感六支柱 + Show-Don't-Tell）
 │
-├── settings/                        # 题材包目录
-│   ├── README.md                    # 怎么添加新题材
-│   ├── gangster-hk-1983/            # 港综（7 + 可选资源定义 = 8 文件）
-│   ├── xianxia-ascension/           # 仙侠（7 + 可选资源定义 = 8 文件）
-│   └── urban-romance-contemporary/  # 都市言情（7 文件，无资源定义）
+├── genres/                          # 题材层：描述某一类题材（多本书共享）
+│   ├── README.md                    # 怎么新增题材
+│   ├── gangster-hk-1983/            # 港综（含 resource_schema）
+│   ├── xianxia-ascension/           # 仙侠（含 resource_schema）
+│   └── urban-romance-contemporary/  # 都市言情（无 resource_schema）
+│
+├── projects/                        # 作品层：一本具体的小说
+│   ├── README.md                    # 怎么新增作品
+│   ├── .active                      # 单行文本，记录当前激活的项目 id
+│   ├── gangster-hk-1983-linjiayao/  # 林家耀的故事（基于 gangster-hk-1983）
+│   │   ├── project.yaml             # 关键字段：genre = gangster-hk-1983
+│   │   ├── outline.json / characters.yaml / timeline.yaml
+│   │   └── state/                   # .gitignore 以下这部分；运行时拷入 + Agent 写入
+│   ├── xianxia-ascension-peichangning/   # 裴长宁飞升记
+│   └── urban-romance-shenruowei/    # 沈若微记事
 │
 ├── src/
-│   ├── config.py                    # 环境变量 + 路径
+│   ├── config.py                    # 环境变量 + 路径 · STATE_DIR 动态指向当前项目 state/
 │   ├── llm.py                       # OpenAI 兼容的 chat 客户端 + 自动写 prompts_log.jsonl
 │   ├── blackboard.py                # 原子写 / jsonl 追加 / yaml 读写
-│   ├── bootstrap.py                 # 从题材包初始化 state/（含可选的资源定义）
+│   ├── bootstrap.py                 # genre + project 两层注入 state/
 │   ├── pipeline.py                  # 主循环 + 按阶段重跑的多个子命令
-│   ├── agents/                      # 5 个创作 Agent + 3 个记账 Agent，共 8 个
+│   ├── agents/                      # 5 个创作 Agent + 3 个记账 Agent
 │   ├── auditors/                    # 3 个后台审计 Agent（含按需触发的 FactChecker）
 │   └── tools/                       # 题材 Lint / 质量仪表盘 / Evaluator 校准
 │
@@ -202,8 +245,8 @@ novelforge/
 ├── tests/                           # 288 个测试用例
 ├── evaluator_calibration/           # Evaluator 校准集（10 case + 3 轮报告）
 │
-└── state/                           # 运行时产物（.gitignore，不进仓库）
-    ├── setting.yaml                 # 当前激活的题材（bootstrap 拷入）
+└── projects/<id>/state/             # 运行时产物（.gitignore，不进仓库）
+    ├── setting.yaml                 # 运行时合成（genre.yaml + project.yaml 合并）
     ├── outline.json / timeline.yaml / characters.yaml
     ├── era.md / writing-style-extra.md / iron-laws-extra.md
     ├── resource_schema.yaml         # 可选，仅当题材提供时存在
@@ -296,7 +339,7 @@ python -m pytest tests/ -v
 - **港综 10 章长跑验证报告** · [`docs/c5-10ch-validation-report.md`](docs/c5-10ch-validation-report.md)
 - **Evaluator 三轮校准报告** · [`docs/c10-evaluator-calibration-report.md`](docs/c10-evaluator-calibration-report.md)
 - **运行时目录页** · [`AGENTS.md`](AGENTS.md)
-- **题材包系统** · [`settings/README.md`](settings/README.md)
+- **题材包系统** · [`genres/README.md`](genres/README.md)  +  [`projects/README.md`](projects/README.md)
 
 ---
 

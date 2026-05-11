@@ -53,16 +53,36 @@ def _read_status() -> dict:
 
 # ---------- path sandbox ----------
 # Only these locations are legible to the browser.
+#
+# STATE_DIR is dynamic: after bootstrap it points to projects/<id>/state/.
+# We also allow requests of the form "state/..." to map to that directory
+# (so Web UI code and existing docs can keep talking about state/ paths
+# regardless of which project is active).
 _ALLOWED_ROOTS = (config.STATE_DIR.resolve(), config.RULES_DIR.resolve())
 _ALLOWED_FILES = (config.PROJECT_ROOT.resolve() / "AGENTS.md",)
 
 
 def _resolve_safe(rel: str) -> Path:
-    """Turn a user-supplied path into an absolute path iff it stays in-sandbox."""
+    """Turn a user-supplied path into an absolute path iff it stays in-sandbox.
+
+    Accepts:
+      - "rules/..."          → RULES_DIR/...
+      - "state/..."          → STATE_DIR/... (dynamic, rewrites to active project)
+      - "AGENTS.md"          → the one whitelisted project-root file
+      - absolute paths under any _ALLOWED_ROOTS (e.g. already-resolved by UI)
+    Anything else → 403.
+    """
     if not rel or ".." in Path(rel).parts:
         abort(403, "path traversal rejected")
-    # Normalize: treat both "state/..." (repo-relative) and bare "..." (state-relative).
-    candidate = (config.PROJECT_ROOT / rel).resolve()
+
+    # Remap "state/..." to the current active STATE_DIR dynamically.
+    # This keeps Web UI code simple (it can always say "state/chapters/...")
+    # even after the project switches.
+    if rel.startswith("state/"):
+        candidate = (config.STATE_DIR / rel[len("state/"):]).resolve()
+    else:
+        candidate = (config.PROJECT_ROOT / rel).resolve()
+
     for root in _ALLOWED_ROOTS:
         try:
             candidate.relative_to(root)

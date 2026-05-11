@@ -7,5 +7,7 @@ node_modules/
 .env
 state/
 !state/.gitkeep
+# Per-project runtime state (2026-05-11 refactor)
+projects/*/state/
 # demo_snapshot/ is intentionally NOT ignored — it's the evidence trail for the demo
 

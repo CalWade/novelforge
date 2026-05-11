@@ -192,20 +192,18 @@ def test_thin_golden_3_chapters_is_warning(clean_setting):
     )
 
 
-def test_real_gangster_setting_has_no_errors():
-    """Integration: real gangster-hk-1983 must have 0 errors."""
-    from src import config
-    gangster = config.PROJECT_ROOT / "settings" / "gangster-hk-1983"
-    r = lint_setting(gangster)
-    assert r.n_errors == 0, f"gangster setting has errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
+def test_real_gangster_project_has_no_errors():
+    """Integration: real gangster-hk-1983-linjiayao must lint clean."""
+    from src.tools.setting_lint import lint_project
+    r = lint_project("gangster-hk-1983-linjiayao")
+    assert r.n_errors == 0, f"gangster project has errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
 
 
-def test_real_xianxia_setting_has_no_errors():
-    """Integration: real xianxia-ascension must have 0 errors."""
-    from src import config
-    xianxia = config.PROJECT_ROOT / "settings" / "xianxia-ascension"
-    r = lint_setting(xianxia)
-    assert r.n_errors == 0, f"xianxia setting has errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
+def test_real_xianxia_project_has_no_errors():
+    """Integration: real xianxia-ascension-peichangning must lint clean."""
+    from src.tools.setting_lint import lint_project
+    r = lint_project("xianxia-ascension-peichangning")
+    assert r.n_errors == 0, f"xianxia project has errors: {[i.message for i in r.issues if i.level == 'ERROR']}"
 
 
 # ---- Optional resource_schema.yaml linting (C-24) ----
@@ -289,13 +287,24 @@ def test_resource_schema_malformed_yaml_is_error(clean_setting):
     )
 
 
-def test_real_urban_romance_no_schema_still_clean():
-    """Integration: urban-romance deliberately has no resource_schema.yaml
-    and must still pass lint with zero errors."""
+def test_real_urban_romance_genre_no_schema_still_clean():
+    """Integration: urban-romance-contemporary genre deliberately has no
+    resource_schema.yaml and must still pass lint with zero errors."""
     from src import config
-    urban = config.PROJECT_ROOT / "settings" / "urban-romance-contemporary"
-    assert not (urban / "resource_schema.yaml").exists(), (
-        "urban-romance should intentionally omit resource_schema.yaml"
+    from src.tools.setting_lint import lint_genre, lint_project
+    urban_genre = config.GENRES_DIR / "urban-romance-contemporary"
+    assert not (urban_genre / "resource_schema.yaml").exists(), (
+        "urban-romance genre should intentionally omit resource_schema.yaml"
     )
-    r = lint_setting(urban)
-    assert r.n_errors == 0
+    # Genre itself lints clean
+    r_genre = lint_genre("urban-romance-contemporary")
+    assert r_genre.n_errors == 0, (
+        f"urban-romance genre has errors: "
+        f"{[i.message for i in r_genre.issues if i.level == 'ERROR']}"
+    )
+    # Project based on it lints clean
+    r_proj = lint_project("urban-romance-shenruowei")
+    assert r_proj.n_errors == 0, (
+        f"urban-romance project has errors: "
+        f"{[i.message for i in r_proj.issues if i.level == 'ERROR']}"
+    )

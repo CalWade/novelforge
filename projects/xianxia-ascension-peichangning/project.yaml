@@ -1,0 +1,16 @@
+# Project: xianxia-ascension-peichangning
+# "裴长宁飞升记" —— 基于 xianxia-ascension 题材的一本小说
+
+id: xianxia-ascension-peichangning
+display_name: 仙侠 · 裴长宁飞升记
+genre: xianxia-ascension
+
+protagonist_name: 裴长宁
+protagonist_hook: 世家旁支子弟，偶得一镜能映心境，踏上一条不容回头的修真路
+
+opening_year_month: 青龙历 1024 年 · 立春
+chapter_count_target: 800
+chapters_in_outline: 10
+
+author_persona_overrides: []
+extra_prohibited_styles: []

@@ -1,0 +1,16 @@
+# Project: urban-romance-shenruowei
+# "沈若微记事" —— 基于 urban-romance-contemporary 题材的一本小说
+
+id: urban-romance-shenruowei
+display_name: 都市言情 · 沈若微记事（深圳科技园）
+genre: urban-romance-contemporary
+
+protagonist_name: 沈若微
+protagonist_hook: 三十岁产品经理，在职业上升期遇见一段需要她慢下来的感情
+
+opening_year_month: 2024-10
+chapter_count_target: 500
+chapters_in_outline: 10
+
+author_persona_overrides: []
+extra_prohibited_styles: []

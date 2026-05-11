@@ -60,10 +60,21 @@ def load_cases(case_filter: str | None = None) -> list[dict]:
 
 
 def setup_scratch_state(setting_name: str, chapter_md: str) -> Path:
-    """Create a fresh scratch state dir seeded from settings/<name>/ + the case's prose.
+    """Create a fresh scratch state dir seeded from genres/<id>/ + the case's prose.
+
+    The `setting_name` field in case YAMLs historically refers to what is now
+    a GENRE id (gangster-hk-1983 / xianxia-ascension / urban-romance-contemporary).
+    We synthesize a minimal unified `state/` dir by:
+      - copying the genre's era/writing-style/iron-laws (and optional resource_schema)
+      - copying a representative project's outline/characters/timeline (first project
+        found for the genre; calibration only needs Evaluator to load them, not reason)
+      - synthesizing setting.yaml via bootstrap._merge_setting_metadata
 
     Returns path to the scratch root (contains state/).
     """
+    # Lazy import to avoid circular dep at module load
+    from .. import bootstrap
+
     tmpdir = Path(tempfile.mkdtemp(prefix="eval_calib_"))
     scratch_state = tmpdir / "state"
     scratch_state.mkdir()
@@ -71,26 +82,56 @@ def setup_scratch_state(setting_name: str, chapter_md: str) -> Path:
     (scratch_state / "summaries").mkdir()
     (scratch_state / "fixes").mkdir()
 
-    # Copy the setting pack into state
-    setting_dir = config.PROJECT_ROOT / "settings" / setting_name
-    if not setting_dir.exists():
-        raise FileNotFoundError(f"Unknown setting: {setting_name}")
-    for f in [
-        "setting.yaml",
-        "outline.json",
-        "timeline.yaml",
-        "characters.yaml",
-        "era.md",
-        "writing-style-extra.md",
-        "iron-laws-extra.md",
-    ]:
-        shutil.copy2(setting_dir / f, scratch_state / f)
+    genre_dir = config.GENRES_DIR / setting_name
+    if not genre_dir.exists():
+        raise FileNotFoundError(f"Unknown genre: {setting_name} (looked in {config.GENRES_DIR})")
+
+    # Copy genre-layer files
+    for f in ["era.md", "writing-style-extra.md", "iron-laws-extra.md"]:
+        shutil.copy2(genre_dir / f, scratch_state / f)
+    schema_src = genre_dir / "resource_schema.yaml"
+    if schema_src.exists():
+        shutil.copy2(schema_src, scratch_state / "resource_schema.yaml")
+
+    # Find a representative project for the genre (first one)
+    rep_project: Path | None = None
+    for p in sorted(config.PROJECTS_DIR.iterdir()):
+        if not p.is_dir() or p.name.startswith("."):
+            continue
+        proj_yaml = p / "project.yaml"
+        if not proj_yaml.exists():
+            continue
+        try:
+            data = yaml.safe_load(proj_yaml.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue
+        if isinstance(data, dict) and data.get("genre") == setting_name:
+            rep_project = p
+            break
+    if rep_project is None:
+        raise FileNotFoundError(
+            f"No project found for genre '{setting_name}' under {config.PROJECTS_DIR}"
+        )
+
+    # Copy project-layer files
+    for f in ["outline.json", "characters.yaml", "timeline.yaml"]:
+        shutil.copy2(rep_project / f, scratch_state / f)
+
+    # Synthesize setting.yaml (same merger bootstrap uses)
+    genre_yaml = yaml.safe_load((genre_dir / "genre.yaml").read_text(encoding="utf-8"))
+    project_yaml = yaml.safe_load((rep_project / "project.yaml").read_text(encoding="utf-8"))
+    merged = bootstrap._merge_setting_metadata(genre_yaml, project_yaml)
+    (scratch_state / "setting.yaml").write_text(
+        yaml.safe_dump(merged, allow_unicode=True, sort_keys=False,
+                       default_flow_style=False),
+        encoding="utf-8",
+    )
 
     # Empty accumulating files
     (scratch_state / "issues.jsonl").touch()
     (scratch_state / "debt.jsonl").touch()
     (scratch_state / "progress.json").write_text(
-        json.dumps({"current_chapter": 0, "active_setting": setting_name}),
+        json.dumps({"current_chapter": 0, "active_project": rep_project.name}),
         encoding="utf-8",
     )
 

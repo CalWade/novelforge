@@ -7,61 +7,110 @@
 
 **Novelforge · 小说锻造厂** — 通用多 Agent 小说写作流水线。外层 Pipeline + 内层 Blackboard + Auditor Fan-Out + Evaluator 半 Debate + Lesson-3 三层 Bookkeeping。
 
-题材通过 **Setting Pack** 注入（见 `settings/`），流水线本身（`src/`）对题材一无所知。
+**两层架构（2026-05-11 重构）**：
+- **题材层**（`genres/<genre-id>/`）：描述什么是港综 / 仙侠 / 言情。多本书共享。
+- **作品层**（`projects/<project-id>/`）：描述一本具体的小说。每本书独立。
+
+流水线本身（`src/`）对两层都无感知；它只读运行时拷贝过来的 `state/` 目录。
 
 ## 如何运行
 
 ```bash
-cp .env.example .env                                    # 填入 DEEPSEEK_API_KEY
+cp .env.example .env                                          # 填入 DEEPSEEK_API_KEY
 pip install -r requirements.txt
 
-python -m src.bootstrap --list                          # 看所有可用题材
-python -m src.bootstrap --setting gangster-hk-1983      # 激活港综
-python -m src.pipeline --range 1-3                      # 跑前三章
-flask --app web.app run --port 5055                     # 启动演示页
+python -m src.bootstrap --list-genres                         # 看所有题材
+python -m src.bootstrap --list                                # 看所有作品
+python -m src.bootstrap --project gangster-hk-1983-linjiayao  # 激活作品（含 state 初始化）
+python -m src.pipeline --range 1-3                            # 跑前三章
+flask --app web.app run --port 5055                           # 启动演示页
 ```
 
-切换题材只需重新 bootstrap，无需改代码：
+切换作品只需重新 bootstrap，无需改代码：
 
 ```bash
-python -m src.bootstrap --setting xianxia-ascension     # 切到仙侠
+python -m src.bootstrap --project xianxia-ascension-peichangning   # 切到仙侠那本
 python -m src.pipeline --chapter 1
+```
+
+新建一本书（脚手架）：
+
+```bash
+python -m src.bootstrap --new-project my-new-book --genre gangster-hk-1983
+# 编辑 projects/my-new-book/project.yaml / outline.json / characters.yaml
+python -m src.bootstrap --project my-new-book
 ```
 
 ## 架构 1 行说明
 
 每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-novelforge-design.md](docs/superpowers/specs/2026-05-09-novelforge-design.md)。
 
-## Setting 系统
+## 题材 + 作品 两层
 
-题材包放在 `settings/<name>/`，每个 **7 个必需文件** + 1 个可选文件：
-- 必需：`setting.yaml` + `outline.json` + `timeline.yaml` + `characters.yaml` + `era.md` + `writing-style-extra.md` + `iron-laws-extra.md`
-- 可选：`resource_schema.yaml`（仅在题材需要数值资源账本时提供；非数值化题材如都市言情不创建此文件，pipeline 会自动跳过 ResourceLedger）
+### genres/ — 题材层
 
-详见 `settings/README.md`。
+题材包放在 `genres/<genre-id>/`。**所有基于该题材的作品共享**这些文件。
 
-`bootstrap` 把选定 setting 的 7 份必需文件拷入 `state/`；如存在 `resource_schema.yaml` 也一并注入，切换到没有 schema 的 setting 时会**主动删除** state/ 里残留的旧 schema。Agent 只读 `state/`，与题材解耦。
+| 文件 | 必需？ | 内容 |
+|---|---|---|
+| `genre.yaml` | ✅ | 题材元信息（id / display_name / genre / era / tone / author_persona_hints / prohibited_styles / genre_avoid） |
+| `era.md` | ✅ | 时代/世界观事实包 |
+| `writing-style-extra.md` | ✅ | 题材特有风格规范 |
+| `iron-laws-extra.md` | ✅ | 题材特有铁律 |
+| `resource_schema.yaml` | 可选 | 可追踪资源定义（仙侠/港综有；都市言情无） |
 
-内置三个 setting：
-- `gangster-hk-1983` —— 港综同人，1983 香港（完整运行过 3 章，产出见 `demo_snapshot/`；提供 resource_schema）
-- `xianxia-ascension` —— 仙侠修真，青龙历纪元（完整运行过 3 章，产出见 `demo_snapshot_xianxia/`；提供 resource_schema）
-- `urban-romance-contemporary` —— 都市言情，2024 深圳（结构完整，未跑 LLM；故意不提供 resource_schema——成年人的情感不数值化）
+详见 `genres/README.md`。
+
+### projects/ — 作品层
+
+一本书放在 `projects/<project-id>/`，每本独立：
+
+| 文件 | 必需？ | 内容 |
+|---|---|---|
+| `project.yaml` | ✅ | 作品元信息（关键字段：`genre = <genre-id>`，声明基于哪个题材） + protagonist_name / opening_year_month / chapter_count_target |
+| `outline.json` | ✅ | 本书整本大纲 + 每章节拍 |
+| `characters.yaml` | ✅ | 本书人物档案 |
+| `timeline.yaml` | ✅ | 本书时间线 |
+| `state/` | 运行时 | bootstrap 拷入题材+作品文件 + Agent 产物（.gitignore） |
+
+详见 `projects/README.md`。
+
+### Bootstrap 在做什么
+
+`python -m src.bootstrap --project <id>`：
+1. 读 `projects/<id>/project.yaml`，找到它声明的 `genre`
+2. 把 `genres/<genre>/` 的题材层文件拷进 `projects/<id>/state/`
+3. 把 `projects/<id>/` 的作品层文件拷进 `projects/<id>/state/`
+4. 合成 `state/setting.yaml`（题材元信息 + 作品元信息合并）
+5. 重置 `state/progress.json`，touch 空 jsonl
+6. 写 `projects/.active` 记录当前激活作品
+7. 刷新 `config.STATE_DIR` 指向 `projects/<id>/state/`
+
+### 内置三组（题材 × 作品）
+
+| 题材 id | 作品 id | 主角 | 状态 |
+|---|---|---|---|
+| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 跑过 10 章 |
+| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 跑过 3 章 |
+| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ⚠️ 未跑 LLM |
 
 ## State 目录地图
 
+所有 Agent 只读写 state/ 下的文件。以下是**激活某个项目后** `projects/<id>/state/` 的布局：
+
 | 路径 | 内容 | 来源 |
 |---|---|---|
-| `state/setting.yaml` | 当前激活的 setting 元信息 | 由 bootstrap 从 setting pack 拷入 |
-| `state/outline.json` | 整本小说大纲 + 每章节拍 | setting pack |
-| `state/timeline.yaml` | 时代/世界观时间线 | setting pack |
-| `state/characters.yaml` | 人物档案 | setting pack |
-| `state/era.md` | 时代/世界观事实包 | setting pack |
-| `state/writing-style-extra.md` | 题材特有风格补充 | setting pack |
-| `state/iron-laws-extra.md` | 题材特有铁律 | setting pack |
+| `state/setting.yaml` | 运行时合成的设定元信息（题材 + 作品合并） | bootstrap |
+| `state/outline.json` | 本书大纲 + 每章节拍 | 作品层（由 bootstrap 拷入） |
+| `state/timeline.yaml` | 本书时间线 | 作品层 |
+| `state/characters.yaml` | 本书人物档案 | 作品层 |
+| `state/era.md` | 题材事实包 | 题材层 |
+| `state/writing-style-extra.md` | 题材特有风格 | 题材层 |
+| `state/iron-laws-extra.md` | 题材特有铁律 | 题材层 |
 | `state/progress.json` | 当前章节、已完成章节、运行中状态 | pipeline 运行时更新 |
 | `state/current_status_card.md` | **当前时间点唯一的权威状态覆盖文件**（主角状态/敌我/资源/已知真相/活跃伏笔/下一章任务卡）。Context Reset 重建局势的入口 | StatusCardUpdater（每章末尾覆盖式更新） |
 | `state/pending_hooks.md` | **待回收伏笔池**（活跃伏笔 + 本章刚回收的伏笔）。Planner 每章必读 | HookKeeper（每章末尾覆盖式更新） |
-| `state/resource_schema.yaml` | 题材的**可追踪资源定义**（灵石/情报值/黑金/境界等）。**可选** —— 题材无需则不注入 | setting pack（bootstrap 注入） |
+| `state/resource_schema.yaml` | 题材的**可追踪资源定义**。**可选** —— 题材无需则不注入 | 题材层（bootstrap 注入） |
 | `state/resource_ledger.md` | 按 schema 记录的资源账本（当前余额 + 本章变动）。仅当 schema 存在时生成 | ResourceLedger（每章末尾覆盖式更新） |
 | `state/chapters/chNNN.md` | 第 N 章正文 | Generator / Fixer |
 | `state/chapters/chNNN.plan.json` | 第 N 章节拍表 | Planner |
@@ -76,6 +125,8 @@ python -m src.pipeline --chapter 1
 | `state/websearch_log.jsonl` | 每次 Perplexity 查询的完整记录（query + latency + 引用数） | websearch.search() 自动写入 |
 | `state/websearch_cache/*.json` | Perplexity 查询结果缓存（md5 键） | websearch.search() 自动写入 |
 | `state/packaging.json` | 出版包装产物（书名/简介/封面/标签） | PackagingAgent（独立运行 `--packaging`） |
+
+**另外**：`projects/.active` 是一个单行文本文件，记录当前激活的 project id。这让工具（web / lint / calibrate）能自动找到"当前这本书"。
 
 ## Agent 名册
 
@@ -96,17 +147,18 @@ python -m src.pipeline --chapter 1
 
 ## 规则索引（Progressive Disclosure）
 
-规则分两层：通用（`rules/`）+ 题材特有（`settings/<name>/` 经 bootstrap 拷入 `state/`）。每个 Agent 只加载它需要的那 1-2 份。
+规则分两层：通用（`rules/`）+ 题材特有（`genres/<id>/` 经 bootstrap 拷入 `state/`）。每个 Agent 只加载它需要的那 1-2 份。
 
 | 文件 | 类型 | 谁用 |
 |---|---|---|
+| `rules/00-information-priority.md` | 通用 | Evaluator、Fixer（引用） |
 | `rules/24-iron-laws.md` | 通用 | Evaluator |
 | `rules/18-landmines.md` | 通用 | Evaluator（全）、AISlopGuard（AI 味子集） |
 | `rules/writing-style-core.md` | 通用 | Generator、Fixer |
-| `state/iron-laws-extra.md` | 题材（setting） | Evaluator |
-| `state/writing-style-extra.md` | 题材（setting） | Generator、Fixer |
-| `state/era.md` | 题材（setting） | Generator |
-| `state/characters.yaml` | 题材（setting） | 所有 Agent |
+| `state/iron-laws-extra.md` | 题材（genre） | Evaluator |
+| `state/writing-style-extra.md` | 题材（genre） | Generator、Fixer |
+| `state/era.md` | 题材（genre） | Generator |
+| `state/characters.yaml` | 作品（project） | 所有 Agent |
 
 ## 故障排查
 
@@ -114,4 +166,4 @@ python -m src.pipeline --chapter 1
 - **章节跑飞或越写越偏** → 检查 `summaries/*.md` 是否被 Generator 污染（本应只由 Summarizer 独立产出）。这是 Lesson 3 的典型泄漏点。
 - **Evaluator 看似通过但 verdict 全空** → 检查 `_skeleton_detected` 字段。Evaluator 返回 JSON 示例骨架时会被 detector 识别并触发 retry，不会静默通过。
 - **生成质量变差** → 打开 Web UI 的 Prompt Inspector，对比相邻两次 Generator 的 system prompt 和 inputs_read。任何两次调用的上下文必须各自独立、不应出现跨章累积。
-- **切换题材但 Agent 仍然用老题材口吻** → 重新 `python -m src.bootstrap --setting <name>`。检查 `state/setting.yaml` 中 `id` 字段是否为期望的 setting。
+- **切换作品但 Agent 仍然用老题材口吻** → 重新 `python -m src.bootstrap --project <id>`。检查 `projects/.active` 文件的内容 + `state/setting.yaml` 中 `id` 字段是否为期望的作品。

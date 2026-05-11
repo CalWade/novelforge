@@ -1,5 +1,5 @@
-# Setting: 仙侠 · 澄冥飞升录
-# Xianxia Ascension — authoritative metadata for this setting pack.
+# Genre: xianxia-ascension
+# 仙侠 · 澄冥飞升录 —— 题材级元信息与写作指导
 
 id: xianxia-ascension
 display_name: 仙侠 · 澄冥飞升录
@@ -10,23 +10,6 @@ genre: 仙侠 / 修真飞升（低魔 + 世家宗门 + 因果宿命）
 era: 架空纪元，灵气 recovering 时代
 tone: 克制叙事，因果渐显，修行如逆水行舟
 
-# Narrative anchors — passed to Planner/Generator as top-level context
-protagonist_name: 裴长宁
-protagonist_hook: 世家旁支子弟，偶得一镜能映心境，踏上一条不容回头的修真路
-opening_year_month: 青龙历 1024 年 · 立春
-chapter_count_target: 800
-chapters_in_outline: 10
-
-# Which extra rule/style files live in this setting
-# (Agents will load these from state/ after bootstrap)
-extra_files:
-  timeline: timeline.yaml
-  characters: characters.yaml
-  era: era.md
-  writing_style_extra: writing-style-extra.md
-  iron_laws_extra: iron-laws-extra.md
-
-# Author-mode hints the Generator will fold into its persona prompt
 author_persona_hints:
   - 克制叙事，不煽情不抒情，文字冷而静（如青铜器表面的锈色）
   - 文言味融入有度——用"乃""遂""矣"等虚词点缀，而非通篇仿古
@@ -34,7 +17,6 @@ author_persona_hints:
   - 境界与心境并重，修为突破必写心魔关卡
   - 世界感来自细节：一炷香的烟气、丹鼎下的炭火、灵田里被霜打过的叶片
 
-# Avoid-list reminders Generator can reference in prompts
 genre_avoid:
   - 龙傲天开局（第一天就去夺筑基丹并把对方全家杀了）
   - 后宫（每个女角色都是潜在道侣）
@@ -44,16 +26,12 @@ genre_avoid:
   - 境界火箭式提升（十章内从炼气飞到金丹）
   - 废柴打脸套路（开局被所有人看不起，然后第 N 章一人独战全宗门）
 
-# 风格锁定（prohibited_styles）—— Generator/Fixer 每章顶部加载
-# 来源：skill #24 全局风格锁定。长链路写作最易飘，必须显式禁止跨题材串味。
 prohibited_styles:
-  # 通用禁止（所有 setting 共用）
   - 影视剧本腔（镜头/特写/切等分镜语言）
   - 游戏系统播报腔（叮！/经验+/任务完成——与"低魔 + 无系统"设定冲突）
   - 轻小说吐槽腔（"我说你啊……"三连/自言自语解读场景）
   - 散文抒情腔（大段风景白描无冲突推进，把修真写成游记）
   - 玩梗吐槽（网络流行梗、段子、表情包口吻）
-  # 题材特定禁止
   - 都市白领腔（"这个需求""对齐一下""OKR"等现代职场词）
   - 霸总腔（"女人 / 小东西 / 乖"等偶像剧台词）
   - 港综江湖腔（大佬、红棍、咪郁等粤语江湖词）
