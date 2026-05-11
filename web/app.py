@@ -581,6 +581,10 @@ def api_status():
 
 
 # ---------- errors ----------
+# All error responses share the same envelope: {"ok": false, "reason": "..."}.
+# This keeps the frontend parser simple and matches the shape that mutating
+# routes (POST /api/projects/*, /api/env, PUT /api/project-files) return
+# inline. Flask's default HTML error pages would break response.json() in JS.
 @app.errorhandler(400)
 def _h400(e):
     return jsonify({"ok": False, "reason": str(e)}), 400
@@ -588,12 +592,17 @@ def _h400(e):
 
 @app.errorhandler(403)
 def _h403(e):
-    return jsonify({"error": "forbidden", "detail": str(e)}), 403
+    return jsonify({"ok": False, "reason": str(e)}), 403
 
 
 @app.errorhandler(404)
 def _h404(e):
-    return jsonify({"error": "not_found", "detail": str(e)}), 404
+    return jsonify({"ok": False, "reason": str(e)}), 404
+
+
+@app.errorhandler(409)
+def _h409(e):
+    return jsonify({"ok": False, "reason": str(e)}), 409
 
 
 if __name__ == "__main__":
