@@ -16,6 +16,18 @@ def client():
         yield c
 
 
+@pytest.fixture
+def restore_state_dir(monkeypatch):
+    """Ensure config.STATE_DIR is re-resolved to its original root after a test
+    has monkeypatched the STATE_DIR env var. Prevents stale pointers to
+    tmp_path-based state dirs from leaking into later tests in the same
+    process.
+    """
+    yield
+    monkeypatch.delenv("STATE_DIR", raising=False)
+    config.refresh_state_dir()
+
+
 def test_state_endpoint_returns_dict(client):
     """Basic smoke — /api/state should work regardless of which project is active."""
     resp = client.get("/api/state")
@@ -25,7 +37,7 @@ def test_state_endpoint_returns_dict(client):
     assert "chapters" in data
 
 
-def test_bb_is_not_cached_across_requests(client, monkeypatch, tmp_path):
+def test_bb_is_not_cached_across_requests(client, monkeypatch, tmp_path, restore_state_dir):
     """After refresh_state_dir, /api/state should see the NEW state/ contents."""
     # Create a fake state/ dir with a distinctive progress.json
     fake_state = tmp_path / "fake_state"
