@@ -313,18 +313,17 @@ def test_real_genres_declare_prohibited_styles(genre_id):
 
 
 # ---------------- preserve_progress ----------------
-# These tests touch the REAL gangster-hk-1983-linjiayao project on disk
-# because they need a real bootstrapped project to exercise the logic.
-# Both use try/finally to restore progress.json and project.yaml.
+# These tests use the `isolated_project` fixture (tests/conftest.py) so they
+# exercise the full bootstrap machinery against a throwaway tmp_path copy
+# instead of mutating the real gangster-hk-1983-linjiayao/ on disk.
 
 
-def test_bootstrap_project_preserves_progress_when_asked(tmp_path, monkeypatch):
+def test_bootstrap_project_preserves_progress_when_asked(isolated_project):
     """preserve_progress=True keeps completed_chapters / current_chapter intact."""
-    pid = "gangster-hk-1983-linjiayao"
+    pid = isolated_project
     state_dir = config.PROJECTS_DIR / pid / "state"
     progress_path = state_dir / "progress.json"
 
-    original_progress = json.loads(progress_path.read_text(encoding="utf-8")) if progress_path.exists() else {}
     fake = {
         "current_chapter": 99,
         "completed_chapters": [1, 2, 99],
@@ -333,30 +332,26 @@ def test_bootstrap_project_preserves_progress_when_asked(tmp_path, monkeypatch):
         "total_llm_calls": 12345,
     }
     progress_path.write_text(json.dumps(fake), encoding="utf-8")
-    try:
-        result = bootstrap.bootstrap_project(pid, preserve_progress=True)
-        new = json.loads(progress_path.read_text(encoding="utf-8"))
-        assert new["current_chapter"] == 99
-        assert new["completed_chapters"] == [1, 2, 99]
-        assert new["total_llm_calls"] == 12345
-        # New fields still added:
-        assert new["active_project"] == pid
-    finally:
-        progress_path.write_text(json.dumps(original_progress), encoding="utf-8")
+
+    bootstrap.bootstrap_project(pid, preserve_progress=True)
+    new = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert new["current_chapter"] == 99
+    assert new["completed_chapters"] == [1, 2, 99]
+    assert new["total_llm_calls"] == 12345
+    # New fields still added:
+    assert new["active_project"] == pid
 
 
-def test_bootstrap_project_resets_progress_by_default(tmp_path):
+def test_bootstrap_project_resets_progress_by_default(isolated_project):
     """Without preserve_progress, progress is RESET (CLI behavior)."""
-    pid = "gangster-hk-1983-linjiayao"
+    pid = isolated_project
     state_dir = config.PROJECTS_DIR / pid / "state"
     progress_path = state_dir / "progress.json"
-    original = json.loads(progress_path.read_text(encoding="utf-8")) if progress_path.exists() else {}
+
     fake = {"current_chapter": 99, "completed_chapters": [99], "total_llm_calls": 100}
     progress_path.write_text(json.dumps(fake), encoding="utf-8")
-    try:
-        bootstrap.bootstrap_project(pid)  # default preserve_progress=False
-        new = json.loads(progress_path.read_text(encoding="utf-8"))
-        assert new["current_chapter"] == 0, "progress should have been reset"
-        assert new["completed_chapters"] == []
-    finally:
-        progress_path.write_text(json.dumps(original), encoding="utf-8")
+
+    bootstrap.bootstrap_project(pid)  # default preserve_progress=False
+    new = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert new["current_chapter"] == 0, "progress should have been reset"
+    assert new["completed_chapters"] == []
