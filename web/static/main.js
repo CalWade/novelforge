@@ -210,11 +210,32 @@ async function api(path, opts) {
     let detail = r.statusText;
     try {
       const j = await r.json();
-      detail = j.detail || j.error || detail;
+      detail = j.reason || j.detail || j.error || detail;
     } catch (_) { /* noop */ }
     throw new Error(`${r.status} ${detail}`);
   }
   return r.json();
+}
+
+/**
+ * Unified mutating-API helper. Backend ships {ok:false, reason} on failure
+ * AND may return 4xx/5xx; we collapse both into a thrown Error(reason).
+ * On success returns the parsed JSON body.
+ */
+async function apiCall(path, opts = {}) {
+  const headers = opts.headers || {};
+  if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const resp = await fetch(path, { ...opts, headers });
+  let body = {};
+  try { body = await resp.json(); } catch (_) { /* allow empty */ }
+  if (!resp.ok || body.ok === false || body.started === false) {
+    const reason = body.reason || body.detail || body.error || `HTTP ${resp.status}`;
+    const err = new Error(reason);
+    err.status = resp.status;
+    err.body = body;
+    throw err;
+  }
+  return body;
 }
 
 function toast(msg, isErr = false) {
@@ -259,6 +280,12 @@ function renderPills() {
   } else {
     badge.textContent = '';
   }
+
+  // Run panel + header sync (idempotent; safe to call on every poll)
+  syncRunButtons();
+  syncProjectButton();
+  syncReadonlyBanner();
+  autofillRunChapter();
 }
 
 // Inject the active setting's title + subtitle into the top-bar brand line,
@@ -776,46 +803,573 @@ async function pollPrompts() {
   state.promptsPollTimer = setTimeout(pollPrompts, state.status.running ? 2500 : 5000);
 }
 
-// ---------- actions ----------
-async function runNextChapter() {
+// ---------- actions: run panel ----------
+// The run panel covers all 9 pipeline entry points. Each mode maps to the
+// POST /api/run body shape the backend expects (see _MODE_DISPATCH in app.py).
+// Range mode has its own input format ("N-M"); packaging takes no chapter.
+const MODES_NO_CHAPTER = new Set(['range', 'packaging']);
+
+function syncRunFields() {
+  const mode = $('#run-mode').value;
+  $('#run-chapter-field').hidden = MODES_NO_CHAPTER.has(mode);
+  $('#run-range-field').hidden = mode !== 'range';
+}
+
+function autofillRunChapter() {
   const s = state.snapshot;
   if (!s) return;
+  const input = $('#run-chapter');
+  if (!input || document.activeElement === input) return;
+  // Default to next chapter (or 1 if starting from scratch)
   const next = (s.progress.current_chapter || 0) + 1;
-  if (next > s.chapters.length) {
-    toast('大纲已跑完（' + s.chapters.length + ' 章）', true);
+  input.value = Math.max(1, Math.min(next, s.chapters.length || next));
+  input.max = String(s.chapters.length || 999);
+}
+
+function syncRunButtons() {
+  const running = !!(state.status && state.status.running);
+  const readonly = !!(state.snapshot && state.snapshot.readonly_mode);
+  const runBtn = $('#btn-run');
+  const abortBtn = $('#btn-abort');
+  if (runBtn) runBtn.disabled = running || readonly;
+  if (abortBtn) abortBtn.disabled = !running || readonly;
+}
+
+async function doRun() {
+  const mode = $('#run-mode').value;
+  const body = { mode };
+  if (mode === 'range') {
+    const range = $('#run-range').value.trim();
+    if (!/^\d+-\d+$/.test(range)) {
+      toast('范围格式必须为 N-M（如 1-3）', true);
+      return;
+    }
+    body.range = range;
+  } else if (!MODES_NO_CHAPTER.has(mode)) {
+    const ch = parseInt($('#run-chapter').value, 10);
+    if (!ch || ch < 1) {
+      toast('请填写有效章号', true);
+      return;
+    }
+    body.chapter = ch;
+  }
+  try {
+    await apiCall('/api/run', { method: 'POST', body: JSON.stringify(body) });
+    toast('已启动 · ' + modeLabel(mode));
+    pollStatus();
+  } catch (e) {
+    toast('无法启动: ' + e.message, true);
+  }
+}
+
+async function doAbort() {
+  try {
+    const r = await apiCall('/api/abort', { method: 'POST' });
+    toast(r.was_running ? '已发送中断信号 · 等下一阶段边界停下' : '流水线并未运行');
+  } catch (e) {
+    toast('中断失败: ' + e.message, true);
+  }
+}
+
+function modeLabel(mode) {
+  const sel = $('#run-mode');
+  if (!sel) return mode;
+  const opt = sel.querySelector(`option[value="${mode}"]`);
+  return opt ? opt.textContent.trim() : mode;
+}
+
+// ---------- header sync helpers ----------
+function syncProjectButton() {
+  const s = state.snapshot;
+  const nameEl = $('#btn-project-name');
+  if (!nameEl) return;
+  const novel = (s && s.novel) || {};
+  const pid = (s && s.progress && s.progress.active_project) || null;
+  if (novel.title) {
+    nameEl.textContent = novel.title;
+  } else if (pid) {
+    nameEl.textContent = pid;
+  } else {
+    nameEl.textContent = '未激活';
+  }
+  nameEl.title = pid ? `当前作品: ${pid}` : '未激活作品';
+}
+
+function syncReadonlyBanner() {
+  const s = state.snapshot;
+  const banner = $('#readonly-banner');
+  if (!banner) return;
+  const ro = !!(s && s.readonly_mode);
+  banner.hidden = !ro;
+  // Hide mutating header controls in readonly mode
+  const runPanel = $('#run-panel');
+  const gear = $('#btn-settings');
+  if (runPanel) runPanel.style.display = ro ? 'none' : '';
+  // The project button still opens the picker (read-only view) but activation
+  // will be refused by the backend. We keep it visible so users can see what
+  // project the demo is frozen on.
+  if (gear) gear.style.display = ro ? 'none' : '';
+}
+
+// =========================================================
+//  PROJECT PICKER & NEW PROJECT WIZARD
+// =========================================================
+
+async function openProjectPicker() {
+  const dlg = $('#dlg-project');
+  const grid = $('#pp-grid');
+  grid.innerHTML = '<div class="project-grid-loading">加载中…</div>';
+  dlg.showModal();
+  try {
+    const { active, projects } = await apiCall('/api/projects');
+    renderProjectGrid(grid, projects, active, {
+      onActivate: async (pid) => {
+        if (pid === active) return;
+        const target = projects.find((p) => p.id === pid);
+        const name = (target && target.display_name) || pid;
+        if (!confirm(`切换到 "${name}" ？当前进度保留在 state/ 里，可随时切回。`)) return;
+        try {
+          await apiCall('/api/projects/activate', {
+            method: 'POST',
+            body: JSON.stringify({ id: pid }),
+          });
+          toast('已切换 · 正在刷新…');
+          setTimeout(() => location.reload(), 400);
+        } catch (e) {
+          toast('切换失败: ' + e.message, true);
+        }
+      },
+      onNew: openNewProjectWizard,
+    });
+  } catch (e) {
+    grid.innerHTML = '';
+    grid.appendChild(el('div', { class: 'form-error' }, '加载作品列表失败: ' + e.message));
+  }
+
+  // Wire the "edit sources" button to open the standalone source editor
+  // scoped to the currently active project.
+  const editBtn = $('#pp-edit-sources');
+  if (editBtn) {
+    editBtn.onclick = () => {
+      dlg.close();
+      openSourceEditor();
+    };
+  }
+}
+
+function renderProjectGrid(root, projects, activeId, { onActivate, onNew }) {
+  root.innerHTML = '';
+  const ro = !!(state.snapshot && state.snapshot.readonly_mode);
+  projects.forEach((p) => {
+    const isActive = p.id === activeId;
+    const card = el('button', {
+      class: 'project-card' + (isActive ? ' is-active' : ''),
+      type: 'button',
+      title: isActive ? '当前作品' : `切换到 ${p.display_name}`,
+      onclick: () => { if (!isActive && onActivate && !ro) onActivate(p.id); },
+    },
+      el('div', { class: 'project-card-name' }, p.display_name || p.id),
+      el('div', { class: 'project-card-meta' },
+        p.genre ? el('span', { class: 'project-card-tag' }, p.genre) : null,
+        isActive
+          ? el('span', { class: 'project-card-tag is-active' }, '当前')
+          : (p.has_state
+              ? el('span', { class: 'project-card-tag is-stateful' }, '已初始化')
+              : el('span', { class: 'project-card-tag is-uninit' }, '未初始化')),
+      ),
+      el('div', { class: 'project-card-id' }, p.id),
+    );
+    root.appendChild(card);
+  });
+
+  // Add a "+ 新建作品" tile (hidden in readonly mode)
+  if (onNew && !ro) {
+    const newCard = el('button', {
+      class: 'project-card project-card-new',
+      type: 'button',
+      onclick: onNew,
+    },
+      el('div', null,
+        el('span', { class: 'project-card-new-glyph' }, '+'),
+        el('span', null, '新建作品'),
+      ),
+    );
+    root.appendChild(newCard);
+  }
+}
+
+// =========================================================
+//  NEW PROJECT WIZARD (3 steps)
+// =========================================================
+
+async function openNewProjectWizard() {
+  // Close the picker if open
+  const picker = $('#dlg-project');
+  if (picker && picker.open) picker.close();
+
+  const dlg = $('#dlg-new-project');
+  // reset wizard state
+  setWizardStep('basics');
+  $('#np-id').value = '';
+  $('#np-basics-error').hidden = true;
+  $('#np-create-error').hidden = true;
+
+  // load genre options
+  const sel = $('#np-genre');
+  sel.innerHTML = '<option value="" disabled selected>加载中…</option>';
+  try {
+    const { genres } = await apiCall('/api/genres');
+    sel.innerHTML = '<option value="" disabled selected>选择题材…</option>';
+    genres.forEach((g) => {
+      const label = `${g.display_name || g.id}${g.era ? ' · ' + g.era : ''}`;
+      sel.appendChild(el('option', { value: g.id }, label));
+    });
+  } catch (e) {
+    sel.innerHTML = `<option value="" disabled selected>加载失败: ${e.message}</option>`;
+  }
+
+  dlg.showModal();
+  // wire the basics form submit (idempotent: always overwrite)
+  $('#np-basics-form').onsubmit = (e) => {
+    e.preventDefault();
+    onWizardBasicsSubmit();
+  };
+}
+
+function setWizardStep(step) {
+  $$('.wizard-step').forEach((n) =>
+    n.classList.toggle('is-active', n.dataset.step === step));
+  $$('.wizard-pane').forEach((n) =>
+    n.classList.toggle('is-active', n.dataset.pane === step));
+}
+
+async function onWizardBasicsSubmit() {
+  const id = $('#np-id').value.trim();
+  const genre = $('#np-genre').value;
+  const errEl = $('#np-basics-error');
+  errEl.hidden = true;
+  if (!/^[a-z0-9_][a-z0-9_-]{0,63}$/.test(id)) {
+    errEl.textContent = 'ID 必须是小写字母/数字/_/-，长度 ≤ 64';
+    errEl.hidden = false;
     return;
   }
+  if (!genre) {
+    errEl.textContent = '请选择题材';
+    errEl.hidden = false;
+    return;
+  }
+  setWizardStep('create');
+  await runWizardCreate(id, genre);
+}
+
+async function runWizardCreate(id, genre) {
+  const statusEl = $('#np-create-status');
+  const textEl = statusEl.querySelector('.wizard-status-text');
+  const markEl = statusEl.querySelector('.wizard-status-mark');
+  const errEl = $('#np-create-error');
+  const contBtn = $('#np-continue-edit');
+  const skipBtn = $('#np-skip-edit');
+  statusEl.classList.remove('is-done', 'is-error');
+  errEl.hidden = true;
+  contBtn.hidden = true;
+  skipBtn.hidden = true;
+  markEl.textContent = '◐';
+  textEl.textContent = '正在创建作品…';
+
   try {
-    await api('/api/run', {
+    await apiCall('/api/projects/new', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chapter: next }),
+      body: JSON.stringify({ id, genre }),
     });
-    toast('开始生成第 ' + next + ' 章');
-    pollStatus();
+    textEl.textContent = '正在激活作品（写入 state/）…';
+    await apiCall('/api/projects/activate', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+    statusEl.classList.add('is-done');
+    markEl.textContent = '✓';
+    textEl.textContent = `已创建并激活 · ${id}`;
+    contBtn.hidden = false;
+    skipBtn.hidden = false;
+
+    contBtn.onclick = () => {
+      setWizardStep('edit');
+      // wire the wizard-scoped source editor
+      initSourceEditor('[data-scope="wizard"]');
+    };
+    skipBtn.onclick = () => {
+      $('#dlg-new-project').close();
+      toast('已创建 · 稍后可在项目切换器中编辑源文件');
+      setTimeout(() => location.reload(), 300);
+    };
+    // Trigger a background state refresh so the header updates
+    pollState();
   } catch (e) {
-    toast('无法启动: ' + e.message, true);
+    statusEl.classList.add('is-error');
+    markEl.textContent = '✕';
+    textEl.textContent = '创建失败';
+    errEl.textContent = e.message;
+    errEl.hidden = false;
   }
 }
 
-async function runAuditCurrent() {
-  const s = state.snapshot;
-  if (!s) return;
-  const curr = s.progress.current_chapter || 1;
+// =========================================================
+//  SOURCE FILE EDITOR (reusable; scoped to a selector)
+//  Used in two places:
+//    - standalone dialog  (data-scope="standalone")
+//    - wizard step 3      (data-scope="wizard")
+// =========================================================
+
+function openSourceEditor() {
+  const dlg = $('#dlg-sources');
+  const pid = (state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project) || '—';
+  $('#src-active-project').textContent = pid;
+  initSourceEditor('[data-scope="standalone"]');
+  dlg.showModal();
+}
+
+function initSourceEditor(scopeSel) {
+  const scope = document.querySelector(`.src-editor${scopeSel}`);
+  if (!scope) return;
+  const tabs = scope.querySelectorAll('.src-tab');
+  const area = scope.querySelector('[data-src-area]');
+  const err = scope.querySelector('[data-src-error]');
+  const saveBtn = scope.querySelector('[data-src-save]');
+
+  // Initial state: activate first tab + load
+  tabs.forEach((t) => t.classList.remove('is-active'));
+  tabs[0].classList.add('is-active');
+  loadSourceFile(scope, tabs[0].dataset.src);
+
+  tabs.forEach((t) => {
+    t.onclick = () => {
+      tabs.forEach((x) => x.classList.toggle('is-active', x === t));
+      loadSourceFile(scope, t.dataset.src);
+    };
+  });
+
+  saveBtn.onclick = async () => {
+    const active = scope.querySelector('.src-tab.is-active');
+    if (!active) return;
+    const name = active.dataset.src;
+    err.hidden = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
+    try {
+      await apiCall('/api/project-files', {
+        method: 'PUT',
+        body: JSON.stringify({ name, content: area.value }),
+      });
+      toast(`已保存 · ${name} · state 已重新同步`);
+      pollState();
+    } catch (e) {
+      err.textContent = '保存失败: ' + e.message;
+      err.hidden = false;
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = scope.dataset.scope === 'wizard' ? '保存当前页' : '保存';
+    }
+  };
+}
+
+async function loadSourceFile(scope, name) {
+  const area = scope.querySelector('[data-src-area]');
+  const err = scope.querySelector('[data-src-error]');
+  err.hidden = true;
+  area.value = '加载中…';
+  area.disabled = true;
   try {
-    await api('/api/audit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chapter: curr }),
-    });
-    toast('重审第 ' + curr + ' 章 · 仅 Auditor 风扇');
-    pollStatus();
+    const body = await apiCall('/api/project-files?name=' + encodeURIComponent(name));
+    area.value = body.content || '';
   } catch (e) {
-    toast('无法启动: ' + e.message, true);
+    area.value = '';
+    err.textContent = `无法加载 ${name}: ${e.message}`;
+    err.hidden = false;
+  } finally {
+    area.disabled = false;
   }
 }
 
-// ---------- init ----------
+// =========================================================
+//  SETTINGS (.env editor)
+// =========================================================
+
+async function openSettingsDialog() {
+  const dlg = $('#dlg-settings');
+  const errEl = $('#st-error');
+  errEl.hidden = true;
+  // Reset password fields every open (blank = keep current)
+  $('#st-deepseek-key').value = '';
+  $('#st-perplexity-key').value = '';
+
+  // Load current env into the form
+  try {
+    const env = await apiCall('/api/env');
+    setHint('st-deepseek-key',  env.DEEPSEEK_API_KEY);
+    setHint('st-perplexity-key', env.PERPLEXITY_API_KEY);
+    $('#st-deepseek-base').value  = (env.DEEPSEEK_BASE_URL  && env.DEEPSEEK_BASE_URL.value)  || '';
+    $('#st-deepseek-model').value = (env.DEEPSEEK_MODEL     && env.DEEPSEEK_MODEL.value)     || '';
+    $('#st-perplexity-base').value  = (env.PERPLEXITY_BASE_URL  && env.PERPLEXITY_BASE_URL.value)  || '';
+    $('#st-perplexity-model').value = (env.PERPLEXITY_MODEL     && env.PERPLEXITY_MODEL.value)     || '';
+  } catch (e) {
+    errEl.textContent = '加载 .env 失败: ' + e.message;
+    errEl.hidden = false;
+  }
+
+  // Wire the submit handler (reset each open to avoid stacking)
+  $('#settings-form').onsubmit = (e) => {
+    e.preventDefault();
+    saveSettings();
+  };
+
+  dlg.showModal();
+}
+
+function setHint(fieldId, meta) {
+  const hint = document.querySelector(`[data-hint-for="${fieldId}"]`);
+  if (!hint) return;
+  if (!meta) { hint.textContent = ''; return; }
+  if (meta.set) {
+    hint.textContent = `当前已设置 · ${meta.preview || ''} （留空则保留）`;
+  } else {
+    hint.textContent = '尚未设置';
+  }
+}
+
+async function saveSettings() {
+  const errEl = $('#st-error');
+  errEl.hidden = true;
+  const payload = {};
+  // Sensitive: only send if user actually typed something (blank = keep).
+  const dsKey = $('#st-deepseek-key').value;
+  if (dsKey) payload.DEEPSEEK_API_KEY = dsKey;
+  const pxKey = $('#st-perplexity-key').value;
+  if (pxKey) payload.PERPLEXITY_API_KEY = pxKey;
+  // Non-sensitive: always send current form value (blank means "delete this key")
+  payload.DEEPSEEK_BASE_URL  = $('#st-deepseek-base').value;
+  payload.DEEPSEEK_MODEL     = $('#st-deepseek-model').value;
+  payload.PERPLEXITY_BASE_URL  = $('#st-perplexity-base').value;
+  payload.PERPLEXITY_MODEL     = $('#st-perplexity-model').value;
+
+  if (Object.keys(payload).length === 0) {
+    errEl.textContent = '没有要保存的字段';
+    errEl.hidden = false;
+    return;
+  }
+
+  try {
+    const r = await apiCall('/api/env', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    toast(`已保存 · 更新了 ${r.updated.length} 个字段`);
+    $('#dlg-settings').close();
+  } catch (e) {
+    errEl.textContent = '保存失败: ' + e.message;
+    errEl.hidden = false;
+  }
+}
+
+// =========================================================
+//  ONBOARDING (gating check on first paint)
+// =========================================================
+
+async function checkOnboarding() {
+  // Returns { needed: bool, step: 'key' | 'project' | null }
+  let envOk = false;
+  try {
+    const env = await apiCall('/api/env');
+    envOk = !!(env.DEEPSEEK_API_KEY && env.DEEPSEEK_API_KEY.set);
+  } catch (_) { /* treat as not ok */ }
+
+  if (!envOk) return { needed: true, step: 'key' };
+
+  const pid = state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project;
+  if (!pid) {
+    // Fallback: also check /api/projects in case progress.json wasn't primed
+    try {
+      const { active } = await apiCall('/api/projects');
+      if (!active) return { needed: true, step: 'project' };
+    } catch (_) {
+      return { needed: true, step: 'project' };
+    }
+  }
+  return { needed: false };
+}
+
+async function showOnboarding(step) {
+  const overlay = $('#onboarding');
+  overlay.hidden = false;
+  showOnboardingStep(step);
+  if (step === 'key') wireOnboardingKey();
+  if (step === 'project') await wireOnboardingProjects();
+}
+
+function showOnboardingStep(step) {
+  $$('.onb-step').forEach((n) => { n.hidden = n.dataset.step !== step; });
+}
+
+function wireOnboardingKey() {
+  const form = $('#onb-key-form');
+  const errEl = $('#onb-key-error');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    errEl.hidden = true;
+    const ds = $('#onb-deepseek').value.trim();
+    const px = $('#onb-perplexity').value.trim();
+    if (!ds) {
+      errEl.textContent = 'DEEPSEEK_API_KEY 必填';
+      errEl.hidden = false;
+      return;
+    }
+    const payload = { DEEPSEEK_API_KEY: ds };
+    if (px) payload.PERPLEXITY_API_KEY = px;
+    try {
+      await apiCall('/api/env', { method: 'POST', body: JSON.stringify(payload) });
+      toast('已保存 · 正在检查作品…');
+      // Advance to project step (re-check in case already activated)
+      showOnboardingStep('project');
+      await wireOnboardingProjects();
+    } catch (e2) {
+      errEl.textContent = e2.message;
+      errEl.hidden = false;
+    }
+  };
+}
+
+async function wireOnboardingProjects() {
+  const grid = $('#onb-project-grid');
+  grid.innerHTML = '<div class="project-grid-loading">加载作品列表…</div>';
+  try {
+    const { active, projects } = await apiCall('/api/projects');
+    // If somehow an active project already exists, skip onboarding.
+    if (active) {
+      $('#onboarding').hidden = true;
+      location.reload();
+      return;
+    }
+    renderProjectGrid(grid, projects, active, {
+      onActivate: async (pid) => {
+        try {
+          await apiCall('/api/projects/activate', {
+            method: 'POST',
+            body: JSON.stringify({ id: pid }),
+          });
+          toast('已激活 · 正在加载…');
+          setTimeout(() => location.reload(), 400);
+        } catch (e) {
+          toast('激活失败: ' + e.message, true);
+        }
+      },
+      onNew: openNewProjectWizard,
+    });
+  } catch (e) {
+    grid.innerHTML = '';
+    grid.appendChild(el('div', { class: 'form-error' }, '加载作品列表失败: ' + e.message));
+  }
+}
+
+
 function wireTabs() {
   $$('.tab[data-tab]').forEach((b) =>
     b.addEventListener('click', () => setCenterTab(b.dataset.tab)));
@@ -824,9 +1378,37 @@ function wireTabs() {
 }
 
 function wireButtons() {
-  $('#btn-run').addEventListener('click', runNextChapter);
-  $('#btn-audit').addEventListener('click', runAuditCurrent);
+  // Run panel
+  $('#run-mode').addEventListener('change', () => { syncRunFields(); });
+  $('#btn-run').addEventListener('click', doRun);
+  $('#btn-abort').addEventListener('click', doAbort);
   $('#btn-reload').addEventListener('click', () => location.reload());
+
+  // Project switcher + settings
+  $('#btn-project').addEventListener('click', openProjectPicker);
+  $('#btn-settings').addEventListener('click', openSettingsDialog);
+
+  // Generic dialog close (data-close-dialog)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-close-dialog]');
+    if (btn) {
+      const dlg = btn.closest('dialog');
+      if (dlg && dlg.open) dlg.close();
+    }
+  });
+
+  // Close dialogs with backdrop click (native dialogs leave this to us)
+  document.querySelectorAll('dialog.dlg').forEach((dlg) => {
+    dlg.addEventListener('click', (e) => {
+      // Click on the dialog element itself (not children) = backdrop
+      const rect = dlg.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right
+                  && e.clientY >= rect.top  && e.clientY <= rect.bottom;
+      if (!inside) dlg.close();
+    });
+  });
+
+  syncRunFields();
 }
 
 // ---------- loading overlay helpers ----------
@@ -849,6 +1431,19 @@ async function init() {
   wireButtons();
   setLoadingPhase('读取 state/ 快照…');
   await pollState();
+
+  // Onboarding gate — if env or active project is missing, show the wizard
+  // and keep the loading overlay dim behind it. Main UI init continues in
+  // the background so once the user finishes onboarding (triggering a reload)
+  // state is already warm.
+  setLoadingPhase('检查配置…');
+  const gate = await checkOnboarding();
+  if (gate.needed) {
+    hideLoadingOverlay();
+    await showOnboarding(gate.step);
+    return;
+  }
+
   setLoadingPhase('加载 prompt log…');
   await refreshPrompts();
   setLoadingPhase('读取运行状态…');

@@ -41,17 +41,58 @@
   </div>
 
   <div class="actions">
-    <button id="btn-run" class="btn btn-primary" title="POST /api/run — 跑下一章完整流水线">
-      <span class="btn-glyph">▶</span>生成下一章
+    <!-- Run panel: mode-aware dispatch across all 9 pipeline entry points -->
+    <div class="run-panel" id="run-panel">
+      <label class="run-field">
+        <span class="run-label">模式</span>
+        <select id="run-mode" class="run-select" title="流水线入口 — 覆盖 /api/run 所有模式">
+          <option value="chapter" selected>生成单章</option>
+          <option value="range">批量生成</option>
+          <option value="packaging">出版包装</option>
+          <option value="plan-only">只重排大纲</option>
+          <option value="write-only">只重写正文</option>
+          <option value="evaluate-only">只重评</option>
+          <option value="fix-only">只跑修复</option>
+          <option value="audit-only">只重审计</option>
+          <option value="bookkeeping-only">只刷台账</option>
+        </select>
+      </label>
+      <label class="run-field" id="run-chapter-field">
+        <span class="run-label">章</span>
+        <input id="run-chapter" class="run-input" type="number" min="1" step="1" value="1" />
+      </label>
+      <label class="run-field" id="run-range-field" hidden>
+        <span class="run-label">范围</span>
+        <input id="run-range" class="run-input run-input-range" type="text" pattern="^\d+-\d+$" placeholder="1-3" value="1-3" />
+      </label>
+      <button id="btn-run" class="btn btn-primary" title="POST /api/run">
+        <span class="btn-glyph">▶</span>开始
+      </button>
+      <button id="btn-abort" class="btn" title="POST /api/abort — 在下一阶段边界停下" disabled>
+        <span class="btn-glyph">⏹</span>中断
+      </button>
+    </div>
+
+    <!-- Project switcher: shows active project, click to open picker -->
+    <button id="btn-project" class="btn btn-ghost btn-project" title="切换作品 / 新建作品">
+      <span class="btn-glyph">◎</span>
+      <span id="btn-project-name">未激活</span>
     </button>
-    <button id="btn-audit" class="btn" title="POST /api/audit — 只重跑 Auditor 风扇">
-      <span class="btn-glyph">↻</span>重审当前章
+    <!-- Settings (.env editor) -->
+    <button id="btn-settings" class="btn btn-ghost btn-icon" title="编辑 .env — API key 与模型">
+      <span class="btn-glyph">⚙</span>
     </button>
-    <button id="btn-reload" class="btn btn-ghost" title="重载页面；所有状态在 state/ 文件里，永不丢失">
-      <span class="btn-glyph">⟳</span>重置并续写
+    <button id="btn-reload" class="btn btn-ghost btn-icon" title="重载页面；所有状态在 state/ 文件里，永不丢失">
+      <span class="btn-glyph">⟳</span>
     </button>
   </div>
 </header>
+
+<!-- Read-only banner, shown when NOVELFORGE_READONLY=1 -->
+<div id="readonly-banner" class="readonly-banner" hidden>
+  <span class="readonly-mark">◉</span>
+  <span class="readonly-text">只读演示模式 · 所有写入路径已封禁</span>
+</div>
 
 <main class="grid">
   <!-- LEFT: file tree -->
@@ -143,5 +184,223 @@
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- =========================================================
+     ONBOARDING OVERLAY (fullscreen, blocking, only on first run)
+     Hidden by default; init() shows it when env or project is
+     missing. Two steps, rendered in the same container.
+     ========================================================= -->
+<div id="onboarding" class="onboarding" hidden aria-modal="true" role="dialog">
+  <div class="onboarding-card">
+    <div class="onboarding-mark">◐</div>
+    <div class="onboarding-brand">Novelforge · 小说锻造厂</div>
+
+    <!-- Step 1: API key -->
+    <div class="onb-step" data-step="key" hidden>
+      <div class="onb-step-n">步骤 1 / 2</div>
+      <h2 class="onb-title">先配一把钥匙</h2>
+      <p class="onb-sub">
+        所有 Agent 都通过 DeepSeek chat/completions 调用大模型。粘贴 API key 即可开始；
+        密钥只会写入项目根目录的 <code>.env</code>，服务器不会外传。
+      </p>
+      <form class="onb-form" id="onb-key-form">
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_API_KEY <span class="form-required">*</span></span>
+          <input id="onb-deepseek" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." required />
+        </label>
+        <label class="form-field form-field-optional">
+          <span class="form-label">PERPLEXITY_API_KEY <span class="form-hint">可选 · 仅在 Evaluator 命中事实核查时使用</span></span>
+          <input id="onb-perplexity" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="pplx-... （留空跳过）" />
+        </label>
+        <div class="form-error" id="onb-key-error" hidden></div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存并继续</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Step 2: choose project -->
+    <div class="onb-step" data-step="project" hidden>
+      <div class="onb-step-n">步骤 2 / 2</div>
+      <h2 class="onb-title">选一本书 · 或新建一本</h2>
+      <p class="onb-sub">
+        每本书独立维护大纲 / 人物 / 时间线；切换不会丢当前进度。
+      </p>
+      <div class="project-grid" id="onb-project-grid">
+        <div class="project-grid-loading">加载中…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     PROJECT PICKER (dismissable; opened by header ◎ button)
+     ========================================================= -->
+<dialog id="dlg-project" class="dlg">
+  <div class="dlg-header">
+    <h2 class="dlg-title">切换作品</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="project-grid" id="pp-grid">
+      <div class="project-grid-loading">加载中…</div>
+    </div>
+    <div class="project-extra">
+      <button class="btn btn-ghost" id="pp-edit-sources">
+        <span class="btn-glyph">✎</span>编辑当前作品的源文件
+      </button>
+    </div>
+  </div>
+</dialog>
+
+<!-- =========================================================
+     NEW PROJECT WIZARD (multi-step inside a dialog)
+     ========================================================= -->
+<dialog id="dlg-new-project" class="dlg dlg-wide">
+  <div class="dlg-header">
+    <h2 class="dlg-title">新建作品</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <!-- Step indicator -->
+    <ol class="wizard-steps" id="wizard-steps">
+      <li class="wizard-step is-active" data-step="basics"><span class="wizard-step-n">1</span>基本信息</li>
+      <li class="wizard-step" data-step="create"><span class="wizard-step-n">2</span>创建</li>
+      <li class="wizard-step" data-step="edit"><span class="wizard-step-n">3</span>编辑源文件</li>
+    </ol>
+
+    <!-- Step 1: basics -->
+    <div class="wizard-pane is-active" data-pane="basics">
+      <form id="np-basics-form" class="onb-form">
+        <label class="form-field">
+          <span class="form-label">作品 ID <span class="form-required">*</span> <span class="form-hint">小写字母 / 数字 / 连字符 / 下划线，长度 ≤ 64</span></span>
+          <input id="np-id" class="form-input form-input-mono" type="text" pattern="^[a-z0-9_][a-z0-9_-]{0,63}$" placeholder="my-new-book" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">题材 <span class="form-required">*</span></span>
+          <select id="np-genre" class="form-input" required>
+            <option value="" disabled selected>加载中…</option>
+          </select>
+        </label>
+        <div class="form-error" id="np-basics-error" hidden></div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">下一步 · 创建</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Step 2: create & activate (automatic) -->
+    <div class="wizard-pane" data-pane="create">
+      <div class="wizard-status" id="np-create-status">
+        <div class="wizard-status-mark">◐</div>
+        <div class="wizard-status-text">正在创建作品并激活…</div>
+      </div>
+      <div class="form-error" id="np-create-error" hidden></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary" id="np-continue-edit" hidden>下一步 · 编辑源文件</button>
+        <button type="button" class="btn btn-ghost" id="np-skip-edit" hidden>跳过 · 稍后再改</button>
+      </div>
+    </div>
+
+    <!-- Step 3: edit sources (reuses the source editor component) -->
+    <div class="wizard-pane" data-pane="edit">
+      <div class="src-editor" data-scope="wizard">
+        <div class="src-tabs" role="tablist">
+          <button class="src-tab is-active" data-src="project.yaml">project.yaml</button>
+          <button class="src-tab" data-src="outline.json">outline.json</button>
+          <button class="src-tab" data-src="characters.yaml">characters.yaml</button>
+          <button class="src-tab" data-src="timeline.yaml">timeline.yaml</button>
+        </div>
+        <textarea class="src-textarea" data-src-area rows="18" spellcheck="false"></textarea>
+        <div class="form-error" data-src-error hidden></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" data-src-save>保存当前页</button>
+          <button type="button" class="btn btn-ghost" data-close-dialog>完成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- =========================================================
+     SOURCE FILE EDITOR (standalone, opened from project picker)
+     ========================================================= -->
+<dialog id="dlg-sources" class="dlg dlg-wide">
+  <div class="dlg-header">
+    <h2 class="dlg-title">编辑源文件 · <span id="src-active-project" class="dlg-subtitle">—</span></h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="src-editor" data-scope="standalone">
+      <div class="src-tabs" role="tablist">
+        <button class="src-tab is-active" data-src="project.yaml">project.yaml</button>
+        <button class="src-tab" data-src="outline.json">outline.json</button>
+        <button class="src-tab" data-src="characters.yaml">characters.yaml</button>
+        <button class="src-tab" data-src="timeline.yaml">timeline.yaml</button>
+      </div>
+      <div class="src-hint">
+        纯文本编辑器 · 保存后 state/ 会自动重新同步（progress 保留）。
+        复杂编辑请直接打开对应文件 — 它们就在 <code>projects/&lt;id&gt;/</code>。
+      </div>
+      <textarea class="src-textarea" data-src-area rows="22" spellcheck="false"></textarea>
+      <div class="form-error" data-src-error hidden></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary" data-src-save>保存</button>
+        <button type="button" class="btn btn-ghost" data-close-dialog>关闭</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- =========================================================
+     SETTINGS (.env editor)
+     ========================================================= -->
+<dialog id="dlg-settings" class="dlg">
+  <div class="dlg-header">
+    <h2 class="dlg-title">设置 · .env</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <form id="settings-form" class="onb-form">
+      <div class="settings-group">
+        <div class="settings-group-label">DeepSeek · 所有创作 Agent 的主引擎</div>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_API_KEY</span>
+          <input id="st-deepseek-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
+          <span class="form-hint-inline" data-hint-for="st-deepseek-key"></span>
+        </label>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_BASE_URL</span>
+          <input id="st-deepseek-base" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_MODEL</span>
+          <input id="st-deepseek-model" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+      </div>
+      <div class="settings-group">
+        <div class="settings-group-label">Perplexity · 可选，仅 FactChecker 会用</div>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_API_KEY</span>
+          <input id="st-perplexity-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
+          <span class="form-hint-inline" data-hint-for="st-perplexity-key"></span>
+        </label>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_BASE_URL</span>
+          <input id="st-perplexity-base" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_MODEL</span>
+          <input id="st-perplexity-model" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+      </div>
+      <div class="form-error" id="st-error" hidden></div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="button" class="btn btn-ghost" data-close-dialog>取消</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 </body>
 </html>
