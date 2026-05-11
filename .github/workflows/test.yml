@@ -1,0 +1,52 @@
+name: tests
+
+# Runs pytest across supported Python versions on every push and PR.
+#
+# Design:
+#   - Python 3.9 is the actual floor (the codebase uses `from __future__ import
+#     annotations` throughout; local dev is on 3.9.6). CI matrix starts there.
+#   - 3.11 and 3.12 are the modern targets.
+#   - 3.13 is pinned as the upper bound we pre-validate against; add newer as
+#     they ship stable.
+#
+# No external services needed — the suite mocks every LLM call and uses
+# tmp_path / monkeypatch fixtures to avoid touching the real projects/ dir.
+# Expected runtime: ~5s per Python version (the suite itself is 1.5s; rest is
+# setup). Fast enough to run on every push without angst.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't abort the whole matrix if one version breaks — we want to see
+      # which versions fail and which pass.
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        # -x: stop on first failure (makes triage easier in CI logs)
+        # -q: quiet mode (verbose is the matrix heading, not per-test)
+        run: python -m pytest -x -q

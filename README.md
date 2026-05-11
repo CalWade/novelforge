@@ -256,6 +256,8 @@ novelforge/
 ├── demo_snapshot/                   # 港综 3 章产物 + 账本样本（Pages 数据源 1）
 ├── demo_snapshot_xianxia/           # 仙侠 3 章产物 + 账本样本（Pages 数据源 2）
 ├── demo_snapshot_gangster_c5_10ch/  # 港综 10 章完整长跑产物
+│                                    # 字段用的是 2026-05-11 重构前的 settings/ schema
+│                                    # 详见 docs/demo-snapshots.md
 │
 ├── tests/                           # 288 个测试用例
 ├── evaluator_calibration/           # Evaluator 校准集（10 case + 3 轮报告）
@@ -300,7 +302,7 @@ novelforge/
 
 ## 技术栈
 
-- Python 3.11+
+- Python 3.9+（本地 3.9.6 + CI 跑 3.9/3.11/3.12/3.13）
 - `httpx` — LLM 客户端（不用官方 SDK，走 OpenAI 兼容协议）
 - `flask` — 动态版 UI
 - `pyyaml` — 黑板存储
