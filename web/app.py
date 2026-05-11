@@ -364,6 +364,10 @@ def api_env_post():
             return jsonify({"ok": False, "reason": f"key not allowed: {k}"}), 400
         if not isinstance(v, str):
             return jsonify({"ok": False, "reason": f"value for {k} must be string"}), 400
+        # Reject newline/null injection — otherwise a malicious value like
+        # "legit\nINJECTED_KEY=pwned" would smuggle extra lines into .env.
+        if any(c in v for c in ("\n", "\r", "\0")):
+            return jsonify({"ok": False, "reason": f"value for {k} contains illegal control chars"}), 400
         updates[k] = v
 
     env_file = _env_path()

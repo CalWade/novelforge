@@ -70,6 +70,23 @@ def test_post_rejects_empty_body(client):
     assert resp.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        "legit\nINJECTED_KEY=pwned",     # LF smuggling a new key
+        "legit\rINJECTED_KEY=pwned",     # CR smuggling a new key
+        "legit\0pwn",                     # null byte
+        "value\nwith\nnewlines",
+    ],
+)
+def test_post_rejects_control_char_injection(client, bad_value):
+    """Refuse \\n / \\r / \\0 in .env values — otherwise attacker can smuggle
+    extra KEY=value lines past the 6-key whitelist."""
+    resp = client.post("/api/env", json={"DEEPSEEK_MODEL": bad_value})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
 def test_get_reports_missing_key_as_unset(client, monkeypatch, tmp_path):
     # Override to a .env without DEEPSEEK_API_KEY
     fake_env = tmp_path / ".env"
