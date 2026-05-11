@@ -558,7 +558,13 @@ def _spawn_single(target_fn, kwargs: dict, kind: str):
         finally:
             _run_lock.release()
 
-    threading.Thread(target=_worker, daemon=True).start()
+    # Guard against Thread.start() failure (e.g. OS thread exhaustion) —
+    # without this, the lock would be stuck acquired forever.
+    try:
+        threading.Thread(target=_worker, daemon=True).start()
+    except BaseException:
+        _run_lock.release()
+        raise
     return True
 
 
@@ -599,7 +605,11 @@ def _spawn_range(chapters: list[int]):
         finally:
             _run_lock.release()
 
-    threading.Thread(target=_worker, daemon=True).start()
+    try:
+        threading.Thread(target=_worker, daemon=True).start()
+    except BaseException:
+        _run_lock.release()
+        raise
     return True
 
 
