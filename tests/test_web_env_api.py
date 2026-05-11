@@ -81,3 +81,25 @@ def test_get_reports_missing_key_as_unset(client, monkeypatch, tmp_path):
     data = resp.get_json()
     assert data["DEEPSEEK_API_KEY"]["set"] is False
     assert data["DEEPSEEK_API_KEY"]["length"] == 0
+
+
+def test_post_preserves_user_added_keys(client, tmp_path, monkeypatch):
+    """Non-whitelist keys in .env (user's manual additions) must survive writes."""
+    fake_env = tmp_path / ".env"
+    fake_env.write_text(
+        "USER_CUSTOM=hello-world\n"
+        "DEEPSEEK_API_KEY=dc-sk-old\n"
+        "ZEBRA_FLAG=trailing\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "_PROJECT_ROOT", tmp_path)
+    config.reload_env()
+
+    resp = client.post("/api/env", json={"DEEPSEEK_API_KEY": "dc-sk-new"})
+    assert resp.status_code == 200
+
+    new_text = fake_env.read_text(encoding="utf-8")
+    assert "USER_CUSTOM=hello-world" in new_text
+    assert "ZEBRA_FLAG=trailing" in new_text
+    assert "DEEPSEEK_API_KEY=dc-sk-new" in new_text
+    assert "DEEPSEEK_API_KEY=dc-sk-old" not in new_text
