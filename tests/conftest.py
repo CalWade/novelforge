@@ -39,12 +39,18 @@ def isolated_project(tmp_path, monkeypatch):
 
     pid = "isolated-test-proj"
     dst_project = tmp_path / pid
-    # Copy only the 4 source files — state/ will be re-created by bootstrap.
+    # Copy the core project files + co-located genre files (single-layer).
+    # state/ will be re-created by bootstrap.
     dst_project.mkdir()
-    for fname in ("project.yaml", "outline.json", "characters.yaml", "timeline.yaml"):
+    for fname in (
+        "project.yaml", "outline.json", "characters.yaml", "timeline.yaml",
+        "era.md", "writing-style-extra.md", "iron-laws-extra.md",
+    ):
         shutil.copy2(src_project / fname, dst_project / fname)
-    # project.yaml references genre by id; we keep the real `gangster-hk-1983`
-    # genre dir as-is (read-only), so no genre monkeypatch is needed.
+    # Optional resource_schema.yaml: copy if present (gangster has one)
+    optional = src_project / "resource_schema.yaml"
+    if optional.exists():
+        shutil.copy2(optional, dst_project / "resource_schema.yaml")
 
     # Redirect config paths
     monkeypatch.setattr(config, "PROJECTS_DIR", tmp_path)

@@ -211,7 +211,7 @@ def api_project_activate():
         return jsonify({
             "ok": True,
             "active": result.project_id,
-            "genre": result.genre_id,
+            "source_preset": result.source_preset,
             "copied_files": result.copied_files,
         })
     finally:
