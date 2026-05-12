@@ -288,31 +288,99 @@ def _render_files_from_blueprint(bb: Blackboard, genre_id: str):
             (genre_dir / fname).write_text(tmpl.format(**ctx), encoding="utf-8")
 
 
-def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool):
+def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool,
+                  max_fix_retries: int = 2):
+    """Run Validator Stages 1+2, then Fixer retry loop up to `max_fix_retries` times.
+
+    Mirrors the novel pipeline's Evaluator→Fixer ≤2 retry pattern (Lesson 4):
+      attempt 0: validate → if only info/warning: done
+                           if any error: Fixer
+      attempt 1: validate → same check → Fixer
+      attempt 2: validate → if still error: ship_with_debt to genre_debt.jsonl
+
+    Stage 3 (trial) runs only at the end if with_trial=True.
+    """
     from src.genre_pipeline.agents.validator import GenreValidator
 
     schemas.update_phase_status(bb, phase="validate", status="in_progress")
 
-    # Stage 1: structural (setting_lint)
-    _run_setting_lint(bb, genre_id)
+    final_errors: list = []
+    for attempt in range(max_fix_retries + 1):
+        # Clear prior issues for a fresh pass (keep the log on disk as history
+        # via audit-trail elsewhere; here we care about the *latest* verdict).
+        bb.write_text("genre_issues.jsonl", "")
 
-    # Stage 2: semantic
-    try:
-        GenreValidator().run(bb, genre_id=genre_id)
-    except Exception as e:
-        bb.append_jsonl("genre_issues.jsonl", {
-            "severity": "warning",
-            "file": "(validator)",
-            "message": f"Stage 2 failed: {type(e).__name__}: {e}",
+        # Stage 1: structural (setting_lint)
+        _run_setting_lint(bb, genre_id)
+
+        # Stage 2: semantic
+        try:
+            GenreValidator().run(bb, genre_id=genre_id)
+        except Exception as e:
+            bb.append_jsonl("genre_issues.jsonl", {
+                "severity": "warning",
+                "file": "(validator)",
+                "message": f"Stage 2 failed: {type(e).__name__}: {e}",
+                "genre_id": genre_id,
+            })
+
+        issues = bb.read_jsonl("genre_issues.jsonl")
+        final_errors = [i for i in issues if i.get("severity") == "error"]
+
+        if not final_errors:
+            break  # clean — no need to fix
+
+        if attempt < max_fix_retries:
+            # Ask Fixer to patch the offending files, one file at a time.
+            _apply_fixer_round(bb, genre_id, final_errors)
+        # else: will fall through to ship_with_debt below
+
+    if final_errors:
+        # Lesson 4: ship with debt rather than loop forever.
+        bb.append_jsonl("genre_debt.jsonl", {
+            "ts": time.time(),
             "genre_id": genre_id,
+            "retries_used": max_fix_retries,
+            "unresolved_errors": final_errors,
         })
 
-    # Stage 3: trial (optional)
+    # Stage 3: trial (optional), runs after the fix loop stabilized (or gave up)
     if with_trial:
         from src.genre_pipeline import trial
         trial.run_trial(genre_id, bb)
 
     schemas.update_phase_status(bb, phase="validate", status="done")
+
+
+def _apply_fixer_round(bb: Blackboard, genre_id: str, errors: list) -> None:
+    """Group errors by file, invoke GenreFixer once per file.
+
+    Fixer silently skips files that can't be resolved from `file` metadata
+    (e.g. "(validator)", "(structure)") — those are not individual files.
+    """
+    from src.genre_pipeline.agents.fixer import GenreFixer
+
+    by_file: dict[str, list] = {}
+    for issue in errors:
+        fname = issue.get("file", "")
+        if not fname or fname.startswith("("):
+            continue  # meta-issue, no file to patch
+        by_file.setdefault(fname, []).append(issue)
+
+    if not by_file:
+        return
+
+    fixer = GenreFixer()
+    for fname, file_issues in by_file.items():
+        try:
+            fixer.run(bb, genre_id=genre_id, file_name=fname, issues=file_issues)
+        except Exception as e:
+            bb.append_jsonl("genre_issues.jsonl", {
+                "severity": "warning",
+                "file": fname,
+                "message": f"Fixer failed on {fname}: {type(e).__name__}: {e}",
+                "genre_id": genre_id,
+            })
 
 
 def _run_setting_lint(bb: Blackboard, genre_id: str):
