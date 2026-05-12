@@ -1171,6 +1171,162 @@ def _unique_novel_path(name: str) -> Path:
         i += 1
 
 
+def _normalize_to_utf8(raw_bytes: bytes) -> tuple[bytes, dict]:
+    """Detect the encoding of ``raw_bytes`` and return UTF-8 bytes + info.
+
+    Returns:
+        (utf8_bytes, info) where info keys are:
+          - detected_encoding: str (e.g. 'utf_8', 'gb18030', 'big5')
+          - confidence: float in [0.0, 1.0]  (charset_normalizer chaos inverse)
+          - normalized: True if we actually decoded + re-encoded; False for
+            pass-through UTF-8.
+          - fallback_used: True if charset_normalizer gave up and we tried
+            codecs from a hard-coded list until one decoded cleanly.
+          - warning: optional str (currently used for BOM-stripping notice)
+
+    Raises:
+        ValueError("unsupported encoding"): every detection avenue failed.
+
+    Strategy (in order):
+      1. Try UTF-8 (with BOM variant) — fast path. Bytes are returned
+         unchanged unless a BOM was present; BOM is stripped because it's
+         just noise for downstream tools.
+      2. Use charset_normalizer with an explicit cp_isolation list. Small
+         samples (<8KB) often mis-detect Chinese as Korean cp949 without
+         isolation; listing the encodings we actually care about fixes
+         that.
+      3. If (2) returns None or its decoded content is >5% U+FFFD
+         replacement chars, fall back to hardcoded codec order:
+         gb18030 (superset of gbk/gb2312) → big5 → shift_jis.
+      4. Still nothing → raise.
+
+    Large-file optimisation: detection runs on the first 200KB. The
+    decision gets applied to the full byte string for the actual decode.
+    charset_normalizer re-reading 10MB of text is measurably slower than
+    decoding once under a known codec.
+    """
+    from charset_normalizer import from_bytes
+
+    # Step 1a: BOM. Python's utf-8 decoder accepts BOM as U+FEFF and would
+    # silently leak it into our decoded text, so check BEFORE the generic
+    # decode. If BOM is present we strip it and re-validate the tail.
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        try:
+            stripped = raw_bytes[3:]
+            stripped.decode("utf-8")  # validate the rest
+            return stripped, {
+                "detected_encoding": "utf_8",
+                "confidence": 1.0,
+                "normalized": True,  # BOM removal counts as normalisation
+                "fallback_used": False,
+                "warning": "stripped UTF-8 BOM",
+            }
+        except UnicodeDecodeError:
+            pass  # BOM + garbage — fall through to detection
+
+    # Step 1b: pure UTF-8 fast path. Zero-copy return.
+    try:
+        raw_bytes.decode("utf-8")
+        return raw_bytes, {
+            "detected_encoding": "utf_8",
+            "confidence": 1.0,
+            "normalized": False,
+            "fallback_used": False,
+            "warning": None,
+        }
+    except UnicodeDecodeError:
+        pass
+
+    # Step 2: charset_normalizer with CJK isolation.
+    # Large-file sampling: pass only the first 200KB for detection. Once
+    # we have a codec verdict, decode the FULL raw_bytes with it — the
+    # codec choice doesn't change mid-file for any real upload.
+    DETECT_SAMPLE = 200 * 1024
+    CP_ISOLATION = [
+        "gb18030", "gbk", "gb2312",
+        "big5", "big5hkscs", "cp950",
+        "shift_jis", "cp932",
+        "euc_jp", "euc_kr",
+    ]
+    sample = raw_bytes[:DETECT_SAMPLE] if len(raw_bytes) > DETECT_SAMPLE else raw_bytes
+    best = from_bytes(sample, cp_isolation=CP_ISOLATION).best()
+
+    fallback_used = False
+    detected_encoding: str | None = None
+    decoded_text: str | None = None
+
+    if best is not None:
+        detected_encoding = best.encoding
+        # Decode the FULL buffer with the detected codec, not just the
+        # sample. errors='replace' tolerates occasional mojibake (a ragged
+        # ending, mid-file encoder glitches) without dropping the file.
+        try:
+            decoded_text = raw_bytes.decode(detected_encoding, errors="replace")
+            # Sanity: if >5% is U+FFFD, charset_normalizer guessed wrong.
+            # Fall through to the manual codec list.
+            if decoded_text.count("\ufffd") > max(10, len(decoded_text) // 20):
+                decoded_text = None
+                detected_encoding = None
+        except (LookupError, UnicodeDecodeError):
+            decoded_text = None
+            detected_encoding = None
+
+    # Step 3: manual fallback list.
+    # Each candidate must clear three gates before we accept it:
+    #   (a) low replacement-char ratio (<5%) — codec matches the byte layout
+    #   (b) reasonable printable concentration (≥50%) — not mojibake soup
+    #   (c) contains ASCII whitespace (space / tab / newline / CR)
+    #       Real text — any text — has line breaks and spaces. Random bytes
+    #       decoded under gb18030 produce mostly CJK with essentially zero
+    #       whitespace (tested: 4096 random bytes → 72 U+FFFD but 0 spaces),
+    #       so this gate is what distinguishes a legit upload from junk.
+    if decoded_text is None:
+        fallback_used = True
+        for codec in ("gb18030", "big5", "shift_jis"):
+            try:
+                candidate = raw_bytes.decode(codec, errors="replace")
+            except (LookupError, UnicodeDecodeError):
+                continue
+            repl_ratio = candidate.count("\ufffd") / max(1, len(candidate))
+            printable = sum(
+                1 for c in candidate
+                if (0x20 <= ord(c) <= 0x7e) or (0x4e00 <= ord(c) <= 0x9fff)
+                or c in "\n\r\t"
+            )
+            printable_ratio = printable / max(1, len(candidate))
+            whitespace_count = sum(candidate.count(w) for w in (" ", "\n", "\t", "\r"))
+            has_whitespace = whitespace_count >= max(1, len(candidate) // 500)
+            if repl_ratio < 0.05 and printable_ratio > 0.5 and has_whitespace:
+                decoded_text = candidate
+                detected_encoding = codec
+                break
+
+    if decoded_text is None or detected_encoding is None:
+        raise ValueError("unsupported encoding")
+
+    # Compute a rough confidence: 1.0 if charset_normalizer matched, else
+    # (1 - replacement ratio) for fallback. Informational only; UI doesn't
+    # currently act on it but the field is stable API.
+    if best is not None and not fallback_used:
+        # charset_normalizer doesn't expose a 0..1 confidence directly;
+        # chaos=0 is perfect, 0.5+ is noise. Map chaos → confidence.
+        try:
+            chaos = float(best.chaos)
+            confidence = max(0.0, 1.0 - min(chaos, 1.0))
+        except (TypeError, ValueError):
+            confidence = 0.8
+    else:
+        confidence = 1.0 - (decoded_text.count("\ufffd") / max(1, len(decoded_text)))
+
+    return decoded_text.encode("utf-8"), {
+        "detected_encoding": detected_encoding,
+        "confidence": confidence,
+        "normalized": True,
+        "fallback_used": fallback_used,
+        "warning": None,
+    }
+
+
 def _is_utf8_ok(path: Path, head_bytes: int = 8192) -> bool:
     """True iff the first head_bytes of the file decode as UTF-8.
 
@@ -1267,59 +1423,73 @@ def api_novels_upload():
     skipped: list[dict] = []
 
     for fs in files:
-        raw = fs.filename or ""
-        name = _sanitize_novel_name(raw)
+        raw_name = fs.filename or ""
+        name = _sanitize_novel_name(raw_name)
 
         # Extension check (after sanitisation so .. ./ etc. couldn't smuggle one in)
         if not name.lower().endswith(".txt"):
             skipped.append({
-                "name": raw or name,
+                "name": raw_name or name,
                 "reason": "not a .txt file (only .txt accepted)",
             })
             continue
 
-        # Size check — per-file. Streamed: seek to end.
-        fs.stream.seek(0, io.SEEK_END)
-        size = fs.stream.tell()
-        fs.stream.seek(0)
-        if size > NOVEL_MAX_BYTES:
+        # Read the full byte stream at once so size-check, encoding-detect and
+        # atomic write all see the SAME bytes. For 50MB cap this is OK; if we
+        # ever raise the cap we should switch to streaming + chunked detect.
+        raw_bytes = fs.stream.read()
+        original_size = len(raw_bytes)
+        if original_size > NOVEL_MAX_BYTES:
             skipped.append({
-                "name": raw,
-                "reason": f"file too large ({_human_size(size)} > {_human_size(NOVEL_MAX_BYTES)})",
+                "name": raw_name,
+                "reason": f"file too large ({_human_size(original_size)} > {_human_size(NOVEL_MAX_BYTES)})",
             })
             continue
-        if size == 0:
-            skipped.append({"name": raw, "reason": "empty file"})
+        if original_size == 0:
+            skipped.append({"name": raw_name, "reason": "empty file"})
+            continue
+
+        # Encoding: detect → decode → re-encode as UTF-8. If this fails, we
+        # don't write anything — the file's bytes make no textual sense and
+        # letting it into novels/ would just crash the pipeline later.
+        try:
+            utf8_bytes, enc_info = _normalize_to_utf8(raw_bytes)
+        except ValueError as e:
+            skipped.append({
+                "name": raw_name,
+                "reason": f"unsupported encoding — tried UTF-8 / GB18030 / Big5 / Shift-JIS ({e})",
+            })
             continue
 
         target = _unique_novel_path(name)
         tmp = target.with_name("." + target.name + ".tmp")
         try:
-            # Atomic write: temp file first, fsync hint, rename.
+            # Atomic write: temp file first, then rename. The bytes we write
+            # are the UTF-8 normalised form (zero-copy when input was already
+            # UTF-8 thanks to the fast path in _normalize_to_utf8).
             with tmp.open("wb") as out_f:
-                while True:
-                    chunk = fs.stream.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    out_f.write(chunk)
+                out_f.write(utf8_bytes)
             os.replace(tmp, target)
         except OSError as e:
-            # Clean up temp if rename fails
             try:
                 if tmp.exists():
                     tmp.unlink()
             except OSError:
                 pass
-            skipped.append({"name": raw, "reason": f"write failed: {e}"})
+            skipped.append({"name": raw_name, "reason": f"write failed: {e}"})
             continue
 
-        enc_ok = _is_utf8_ok(target)
         uploaded.append({
             "name": target.name,
             "path": f"novels/{target.name}",
-            "size_bytes": size,
-            "size_human": _human_size(size),
-            "encoding_ok": enc_ok,
+            "size_bytes": len(utf8_bytes),
+            "size_human": _human_size(len(utf8_bytes)),
+            "original_size_bytes": original_size,
+            "encoding_ok": True,  # on-disk bytes are now guaranteed UTF-8
+            "detected_encoding": enc_info["detected_encoding"],
+            "normalized": enc_info["normalized"],
+            "fallback_used": enc_info["fallback_used"],
+            "encoding_warning": enc_info.get("warning"),
         })
 
     # 201 iff at least one file landed; otherwise 200 so the UI can still

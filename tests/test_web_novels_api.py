@@ -268,25 +268,30 @@ def test_upload_preserves_chinese_filename(client, tmp_novels):
     assert (tmp_novels / uploaded_name).exists()
 
 
-def test_upload_non_utf8_flagged_but_stored(client, tmp_novels):
-    """GBK content stored as-is; encoding_ok is reported so user can re-encode."""
-    gbk_content = "你好世界".encode("gbk")  # guaranteed NOT valid utf-8 beyond ascii
+def test_upload_non_utf8_normalised_to_utf8(client, tmp_novels):
+    """GBK content is auto-detected and transcoded to UTF-8 on disk.
+
+    (Superseded the old 'flagged but stored' contract once the upload route
+    learned to normalise encodings — see test_web_novels_encoding.py for
+    the exhaustive per-codec coverage. This test stays as a regression
+    guard that the simpler '你好世界 × 500' canary still round-trips.)
+    """
+    original_text = "你好世界\n" * 500
+    gbk_content = original_text.encode("gbk")
     resp = client.post(
         "/api/novels/upload",
-        data={"files": _file_arg("gbk.txt", gbk_content * 500)},  # big enough
+        data={"files": _file_arg("gbk.txt", gbk_content)},
         content_type="multipart/form-data",
     )
     assert resp.status_code == 201
     data = resp.get_json()
-    # Either uploaded-with-warning OR skipped-with-reason is acceptable; both
-    # should tell the user encoding failed.
-    if data["uploaded"]:
-        u = data["uploaded"][0]
-        assert u.get("encoding_ok") is False, f"expected encoding_ok=false: {u}"
-    else:
-        assert data["skipped"]
-        assert "encoding" in data["skipped"][0]["reason"].lower() or \
-               "utf" in data["skipped"][0]["reason"].lower()
+    assert len(data["uploaded"]) == 1
+    u = data["uploaded"][0]
+    # New contract: disk is always UTF-8, encoding_ok is always true.
+    assert u["encoding_ok"] is True
+    assert u["normalized"] is True
+    # Round-trip integrity
+    assert (tmp_novels / "gbk.txt").read_text("utf-8") == original_text
 
 
 def test_upload_oversized_file_skipped(client, tmp_novels, monkeypatch):
