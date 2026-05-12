@@ -3,13 +3,19 @@
    Minimal vanilla JS: fetch, render, poll. No framework.
    Pairs with web/app.py /api/presets/* endpoints and
    web/templates/presets/*.html views.
+
+   Phase 5 cleanup: only wires endpoints that actually exist:
+     GET  /api/presets                  · list
+     GET  /api/presets/<id>             · files + novels + builtin
+     DELETE /api/presets/<id>           · delete (non-builtin)
+     POST /api/presets/new-from-novel   · kick off extraction
+     GET  /api/presets/<id>/status      · poll extraction job
    ========================================================= */
 (function () {
   'use strict';
 
   // ---------- tiny helpers ----------
   function $(sel, root) { return (root || document).querySelector(sel); }
-  function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
 
   function el(tag, attrs, children) {
     const n = document.createElement(tag);
@@ -20,7 +26,7 @@
         else if (k === 'html') n.innerHTML = attrs[k];
         else if (k.startsWith('on') && typeof attrs[k] === 'function') {
           n.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-        } else if (attrs[k] !== undefined && attrs[k] !== null) {
+        } else if (attrs[k] !== undefined && attrs[k] !== null && attrs[k] !== false) {
           n.setAttribute(k, attrs[k]);
         }
       }
@@ -36,7 +42,7 @@
     const resp = await fetch(path, Object.assign({}, opts, { headers: headers }));
     let body = {};
     try { body = await resp.json(); } catch (_) {}
-    if (!resp.ok || body.ok === false || body.started === false) {
+    if (!resp.ok || body.ok === false) {
       const reason = body.reason || body.detail || body.error || ('HTTP ' + resp.status);
       const err = new Error(reason);
       err.status = resp.status;
@@ -61,19 +67,20 @@
   async function initIndex() {
     const grid = $('#genre-grid');
     const count = $('#genre-count');
+    if (!grid) return;
     try {
       const data = await apiCall('/api/presets');
-      const genres = data.genres || [];
-      count.textContent = genres.length + ' 个题材';
+      const presets = data.presets || data.genres || [];
+      if (count) count.textContent = presets.length + ' 个题材';
       grid.innerHTML = '';
-      if (!genres.length) {
+      if (!presets.length) {
         grid.appendChild(el('div', { class: 'placeholder' }, [
           el('div', { class: 'placeholder-title', text: '还没有题材' }),
-          el('div', { class: 'placeholder-sub', text: '点击右上角「新建题材」开始。' }),
+          el('div', { class: 'placeholder-sub', text: '用下方的「从原著拆出新 preset」开始。' }),
         ]));
         return;
       }
-      genres.forEach(g => grid.appendChild(renderGenreCard(g)));
+      presets.forEach(g => grid.appendChild(renderGenreCard(g)));
     } catch (e) {
       grid.innerHTML = '';
       grid.appendChild(el('div', { class: 'placeholder' }, [
@@ -85,343 +92,158 @@
 
   function renderGenreCard(g) {
     const meta = [];
-    if (g.genre) meta.push(el('span', { class: 'genre-chip genre-chip-amber', text: g.genre }));
-    if (g.era) meta.push(el('span', { class: 'genre-chip genre-chip-cyan', text: g.era }));
     if (g.tone) meta.push(el('span', { class: 'genre-chip', text: g.tone }));
-    meta.push(el('span', { class: 'genre-chip', text: (g.file_count || 0) + ' 份文件' }));
-    if (g.has_build_status) {
-      meta.push(el('span', { class: 'genre-chip genre-chip-amber', text: '.build/' }));
-    }
+    if (g.builtin) meta.push(el('span', { class: 'genre-chip genre-chip-amber', text: '内置' }));
 
     const title = g.display_name && g.display_name !== g.id ? g.display_name : g.id;
 
-    const card = el('article', { class: 'genre-card' }, [
+    const actions = [
+      el('a', { class: 'btn', href: '/presets/' + encodeURIComponent(g.id) }, ['查看']),
+    ];
+    if (!g.builtin) {
+      actions.push(el('button', {
+        class: 'btn btn-danger',
+        onclick: () => confirmDelete(g.id),
+      }, ['删除']));
+    }
+
+    return el('article', { class: 'genre-card' }, [
       el('div', { class: 'genre-card-id', text: g.id }),
       el('h3', { class: 'genre-card-title', text: title }),
-      el('div', { class: 'genre-card-desc', text: describe(g) }),
       el('div', { class: 'genre-card-meta' }, meta),
-      el('div', { class: 'genre-card-actions' }, [
-        el('a', { class: 'btn', href: '/presets/' + encodeURIComponent(g.id) }, ['查看']),
-        el('button', { class: 'btn', onclick: () => runAudit(g.id) }, ['审查']),
-        el('button', { class: 'btn btn-danger', onclick: () => confirmDelete(g.id) }, ['删除']),
-      ]),
+      el('div', { class: 'genre-card-actions' }, actions),
     ]);
-    return card;
   }
 
-  function describe(g) {
-    // Terse one-liner; avoids empty space if nothing to say.
-    const bits = [];
-    if (g.genre && g.era) bits.push(g.genre + ' · ' + g.era);
-    else if (g.genre) bits.push(g.genre);
-    else if (g.era) bits.push(g.era);
-    if (g.tone) bits.push(g.tone);
-    return bits.join(' / ') || '—';
-  }
-
-  async function runAudit(gid) {
-    toast('正在审查 ' + gid + ' …');
-    try {
-      const r = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/audit', { method: 'POST' });
-      const msg = `${gid}: ${r.error_count || 0} error · ${r.warning_count || 0} warning`;
-      toast(msg, r.error_count ? 'err' : 'ok');
-    } catch (e) {
-      toast('审查失败: ' + e.message, 'err');
-    }
-  }
-
-  async function confirmDelete(gid) {
-    const ok = window.confirm(`确认删除题材「${gid}」？\n\n此操作不可撤销。如果有作品依赖此题材，将会被拒绝。`);
+  async function confirmDelete(pid) {
+    const ok = window.confirm(
+      `确认删除题材「${pid}」？\n\n此操作不可撤销。如果有作品依赖此题材，可能会报错。`
+    );
     if (!ok) return;
     try {
-      await apiCall('/api/presets/' + encodeURIComponent(gid), { method: 'DELETE' });
-      toast('已删除 ' + gid, 'ok');
-      initIndex();
+      await apiCall('/api/presets/' + encodeURIComponent(pid), { method: 'DELETE' });
+      toast('已删除 ' + pid, 'ok');
+      if ($('#genre-grid')) initIndex();
+      else window.location.href = '/presets';
     } catch (e) {
       toast('删除失败: ' + e.message, 'err');
     }
   }
 
   // ========================================================
-  // /presets/new
-  // ========================================================
-  function initNew() {
-    const form = $('#new-genre-form');
-    const err = $('#f-error');
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      err.hidden = true;
-      const data = {
-        id: $('#f-id').value.trim(),
-        name: $('#f-name').value.trim(),
-        genre: $('#f-genre').value.trim(),
-        era: $('#f-era').value.trim(),
-        tone: $('#f-tone').value.trim(),
-      };
-      try {
-        const r = await apiCall('/api/presets/new', {
-          method: 'POST',
-          body: JSON.stringify(data),
-        });
-        toast('已创建 ' + r.genre_id, 'ok');
-        window.location.href = '/presets/' + encodeURIComponent(r.genre_id);
-      } catch (e) {
-        err.textContent = e.message;
-        err.hidden = false;
-      }
-    });
-  }
-
-  // ========================================================
   // /presets/<id>  — detail
   // ========================================================
-  async function initDetail(gid) {
-    // Wire up action buttons
-    $('#btn-audit').addEventListener('click', async () => {
-      const btn = $('#btn-audit'); btn.disabled = true;
-      try {
-        const r = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/audit', { method: 'POST' });
-        toast(`审查完成: ${r.error_count || 0} error · ${r.warning_count || 0} warning`, r.error_count ? 'err' : 'ok');
-        loadDetail(gid);
-      } catch (e) {
-        toast('审查失败: ' + e.message, 'err');
-      } finally { btn.disabled = false; }
-    });
-    $('#btn-fill').addEventListener('click', async () => {
-      const btn = $('#btn-fill'); btn.disabled = true;
-      try {
-        const r = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/fill', { method: 'POST' });
-        const n = (r.filled || []).length;
-        toast(n ? `补齐了 ${n} 份: ${r.filled.join(', ')}` : '没有缺失文件', 'ok');
-        loadDetail(gid);
-      } catch (e) {
-        toast('补齐失败: ' + e.message, 'err');
-      } finally { btn.disabled = false; }
-    });
-    $('#btn-delete').addEventListener('click', async () => {
-      await confirmDelete(gid);
-      // If we're still on this page after delete succeeded, bounce home.
-      // confirmDelete calls initIndex() on success; on this page initIndex will
-      // no-op (no #genre-grid) — so we redirect manually:
-      setTimeout(() => {
-        // If the genre is gone, detail fetch will now 404 — redirect.
-        fetch('/api/presets/' + encodeURIComponent(gid) + '/status')
-          .then(r => { if (r.status === 404) window.location.href = '/presets'; });
-      }, 200);
-    });
-
-    await loadDetail(gid);
+  async function initDetail(pid) {
+    const delBtn = $('#btn-delete');
+    if (delBtn) {
+      delBtn.addEventListener('click', () => confirmDelete(pid));
+    }
+    await loadDetail(pid);
   }
 
-  async function loadDetail(gid) {
-    // Fetch genre list to find this entry's metadata
-    let genreMeta = null;
+  async function loadDetail(pid) {
+    // Pull the summary (list) entry to get display_name / tone
     try {
       const list = await apiCall('/api/presets');
-      genreMeta = (list.genres || []).find(g => g.id === gid);
-    } catch (_) {}
-    if (genreMeta) {
-      $('#gd-title').textContent = genreMeta.display_name || gid;
-      const meta = $('#gd-meta');
-      meta.innerHTML = '';
-      if (genreMeta.genre) meta.appendChild(el('span', { class: 'genre-chip genre-chip-amber', text: genreMeta.genre }));
-      if (genreMeta.era) meta.appendChild(el('span', { class: 'genre-chip genre-chip-cyan', text: genreMeta.era }));
-      if (genreMeta.tone) meta.appendChild(el('span', { class: 'genre-chip', text: genreMeta.tone }));
-    }
+      const presets = list.presets || list.genres || [];
+      const meta = presets.find(g => g.id === pid);
+      if (meta) {
+        $('#gd-title').textContent = meta.display_name || pid;
+        const metaEl = $('#gd-meta');
+        metaEl.innerHTML = '';
+        if (meta.tone) metaEl.appendChild(el('span', { class: 'genre-chip', text: meta.tone }));
+        if (meta.builtin) metaEl.appendChild(el('span', { class: 'genre-chip genre-chip-amber', text: '内置' }));
+      }
+    } catch (_) { /* fall through */ }
 
-    // Fetch file listing via /api/file on each expected file
-    const expected = [
-      { name: 'genre.yaml', required: true },
-      { name: 'era.md', required: true },
-      { name: 'writing-style-extra.md', required: true },
-      { name: 'iron-laws-extra.md', required: true },
-      { name: 'resource_schema.yaml', required: false },
-    ];
+    // Pull the detail — files + novels + builtin
     const filesEl = $('#gd-files');
-    filesEl.innerHTML = '';
-    for (const f of expected) {
-      // We don't have a generic genre-file read endpoint; just display name.
-      // The backend's file_count in /api/presets tells us *whether* they exist,
-      // but not per-file. For per-file state, we probe via HEAD on /api/genre-file?
-      // Simpler: call /api/presets and infer 4-5 present, then stat individually
-      // by attempting /api/genre-files endpoint. To keep scope tight we render
-      // just the list with a "tracked" badge.
-      filesEl.appendChild(el('li', { class: 'genre-file' }, [
-        el('span', { class: 'genre-file-name', text: f.name }),
-        el('span', { class: 'genre-file-size', text: f.required ? '必需' : '可选' }),
-      ]));
-    }
-
-    // Fetch build status + recent issues
+    const novelsEl = $('#gd-novels');
     try {
-      const status = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/status');
-      renderPhases($('#gd-phases'), status.phases || {}, status.has_build);
-      renderInflight($('#gd-inflight'), status.in_flight);
-      // Issues list — we piggyback on the status endpoint by reading the
-      // genre_issues.jsonl via /api/file with the full build path.
-      // Keep it simple: render nothing if we can't read it (not all builds
-      // have been audited).
-    } catch (e) {
-      $('#gd-phases').innerHTML = '';
-      $('#gd-phases').appendChild(el('div', { class: 'placeholder' }, [
-        el('div', { class: 'placeholder-title', text: '暂无构建记录' }),
-        el('div', { class: 'placeholder-sub', text: '跑一次审查或拆解会生成 .build/ 目录。' }),
-      ]));
-    }
-
-    renderIssues($('#gd-issues'), gid);
-  }
-
-  function renderPhases(target, phases, hasBuild) {
-    target.innerHTML = '';
-    if (!hasBuild) {
-      target.appendChild(el('div', { class: 'placeholder' }, [
-        el('div', { class: 'placeholder-title', text: '暂无构建记录' }),
-        el('div', { class: 'placeholder-sub', text: '跑一次审查或拆解会生成 .build/ 目录。' }),
-      ]));
-      return;
-    }
-    const order = ['extract', 'merge', 'draft', 'validate'];
-    order.forEach(k => {
-      const ph = phases[k] || { status: 'pending' };
-      const bits = [];
-      if (k === 'extract' && ph.batches_total) {
-        bits.push(`${ph.batches_done || 0} / ${ph.batches_total} 批`);
+      const d = await apiCall('/api/presets/' + encodeURIComponent(pid));
+      filesEl.innerHTML = '';
+      if (!(d.files || []).length) {
+        filesEl.appendChild(el('li', { class: 'placeholder', text: '（目录为空）' }));
+      } else {
+        d.files.forEach(name => {
+          filesEl.appendChild(el('li', { class: 'genre-file' }, [
+            el('span', { class: 'genre-file-name', text: name }),
+          ]));
+        });
       }
-      target.appendChild(el('div', { class: 'genre-phase-row' }, [
-        el('span', { class: 'genre-phase-row-name', text: k }),
-        el('span', { class: 'genre-phase-row-detail', text: bits.join(' · ') || '—' }),
-        el('span', { class: 'genre-phase-row-status status-' + (ph.status || 'pending'), text: ph.status || 'pending' }),
-      ]));
-    });
-  }
 
-  function renderInflight(target, inFlight) {
-    if (!inFlight) { target.hidden = true; target.textContent = ''; return; }
-    target.hidden = false;
-    target.innerHTML = '';
-    const parts = [inFlight.agent || 'agent'];
-    if (inFlight.batch_id != null) parts.push('batch ' + inFlight.batch_id);
-    if (inFlight.started_at) parts.push('since ' + inFlight.started_at);
-    target.appendChild(document.createTextNode(parts.join(' · ')));
-  }
-
-  async function renderIssues(target, gid) {
-    target.innerHTML = '';
-    try {
-      const r = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/issues?limit=10');
-      const issues = r.issues || [];
-      if (!issues.length) {
-        target.appendChild(el('div', { class: 'placeholder' }, [
-          el('div', { class: 'placeholder-title', text: '暂无审查问题' }),
-          el('div', { class: 'placeholder-sub', text: '跑一次审查会在此显示最新 10 条。' }),
-        ]));
-        return;
+      novelsEl.innerHTML = '';
+      if (!(d.novels || []).length) {
+        novelsEl.appendChild(el('li', { class: 'placeholder', text: '（没有绑定的原著文件）' }));
+      } else {
+        d.novels.forEach(name => {
+          novelsEl.appendChild(el('li', { class: 'genre-file' }, [
+            el('span', { class: 'genre-file-name', text: name }),
+          ]));
+        });
       }
-      const header = el('div', { class: 'genre-issues-header', text:
-        `最新 ${issues.length} 条 / 共 ${r.total || issues.length} 条` });
-      target.appendChild(header);
-      issues.forEach(it => {
-        const sev = (it.severity || 'info').toLowerCase();
-        target.appendChild(el('div', { class: 'genre-issue' }, [
-          el('span', { class: 'genre-issue-sev sev-' + sev, text: sev }),
-          el('span', { class: 'genre-issue-file', text: it.file || '—' }),
-          el('span', { class: 'genre-issue-msg', text: it.message || '' }),
-        ]));
-      });
-    } catch (e) {
-      target.appendChild(el('div', { class: 'placeholder' }, [
-        el('div', { class: 'placeholder-title', text: '无法读取问题列表' }),
-        el('div', { class: 'placeholder-sub', text: e.message }),
-      ]));
-    }
-  }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
+      // Enable delete only for non-builtin
+      const del = $('#btn-delete');
+      if (del && !d.builtin) {
+        del.disabled = false;
+        del.title = '删除这个题材';
+      } else if (del) {
+        del.disabled = true;
+        del.title = '内置题材不可删除';
+      }
+    } catch (e) {
+      filesEl.innerHTML = '';
+      filesEl.appendChild(el('li', { class: 'placeholder', text: '加载失败: ' + e.message }));
+      novelsEl.innerHTML = '';
+    }
   }
 
   // ========================================================
-  // /presets/<id>/extract — form
+  // /presets — inline "新 preset from novel" form
   // ========================================================
-  function initExtract(gid) {
+  function initNewFromNovel() {
+    const form = $('#new-from-novel-form');
+    if (!form) return;
+
     const state = {
-      mode: 'library',   // 'library' | 'advanced'
-      selected: new Set(),
       novels: [],
+      selected: new Set(),
     };
 
-    // --- mode toggle ---
-    document.querySelectorAll('.mode-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mode = btn.getAttribute('data-mode');
-        state.mode = mode;
-        document.querySelectorAll('.mode-tab').forEach(t => {
-          const active = t.getAttribute('data-mode') === mode;
-          t.classList.toggle('is-active', active);
-          t.setAttribute('aria-selected', active ? 'true' : 'false');
-        });
-        document.querySelectorAll('.mode-pane').forEach(p => {
-          p.classList.toggle('is-active', p.getAttribute('data-pane') === mode);
-        });
-        updateSubmitState();
-      });
-    });
-
-    // --- load library ---
+    // Load novels for picker
     loadNovels(state, updateSubmitState);
 
-    // select all / none
-    $('#btn-select-all').addEventListener('click', () => {
-      state.novels.forEach(n => state.selected.add(n.name));
-      renderPicker(state, updateSubmitState);
-    });
-    $('#btn-select-none').addEventListener('click', () => {
-      state.selected.clear();
-      renderPicker(state, updateSubmitState);
-    });
+    $('#f-new-id').addEventListener('input', updateSubmitState);
 
-    // textarea triggers submit-enable check too
-    $('#f-sources').addEventListener('input', updateSubmitState);
-
-    // submit
-    const form = $('#extract-form');
-    const err = $('#f-error');
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      const err = $('#f-error');
       err.hidden = true;
-
-      let sources;
-      if (state.mode === 'library') {
-        if (!state.selected.size) {
-          err.textContent = '至少勾选一个素材文件。';
-          err.hidden = false;
-          return;
-        }
-        sources = Array.from(state.selected).map(n => 'novels/' + n);
-      } else {
-        sources = $('#f-sources').value
-          .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        if (!sources.length) {
-          err.textContent = '至少需要一个源文件路径。';
-          err.hidden = false;
-          return;
-        }
+      const pid = $('#f-new-id').value.trim();
+      const sources = Array.from(state.selected).map(n => 'novels/' + n);
+      if (!pid) {
+        err.textContent = '请输入新题材 id';
+        err.hidden = false;
+        return;
       }
-
+      if (!sources.length) {
+        err.textContent = '至少勾选一个原著文件';
+        err.hidden = false;
+        return;
+      }
       const body = {
+        id: pid,
         sources: sources,
         with_trial: $('#f-with-trial').checked,
-        dry_run: $('#f-dry-run').checked,
       };
       try {
-        await apiCall('/api/presets/' + encodeURIComponent(gid) + '/extract', {
+        await apiCall('/api/presets/new-from-novel', {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        window.location.href = '/presets/' + encodeURIComponent(gid) + '/extract/progress';
+        showProgress(pid);
+        pollJobStatus(pid);
       } catch (e) {
         err.textContent = e.message;
         err.hidden = false;
@@ -431,224 +253,117 @@
     function updateSubmitState() {
       const btn = $('#btn-submit');
       const label = $('#submit-label');
-      let enabled = false;
-      let count = 0;
-      if (state.mode === 'library') {
-        count = state.selected.size;
-        enabled = count > 0;
-        label.textContent = count > 0 ? `启动拆解 · ${count} 个素材` : '启动拆解';
-      } else {
-        const raw = $('#f-sources').value
-          .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        enabled = raw.length > 0;
-        label.textContent = raw.length > 0 ? `启动拆解 · ${raw.length} 个路径` : '启动拆解';
-      }
+      const pid = $('#f-new-id').value.trim();
+      const count = state.selected.size;
+      const enabled = !!pid && count > 0;
       btn.disabled = !enabled;
-    }
-  }
-
-  async function loadNovels(state, onChange) {
-    const body = $('#picker-body');
-    const summary = $('#picker-summary');
-    try {
-      const data = await apiCall('/api/novels');
-      state.novels = data.novels || [];
-      renderPicker(state, onChange);
-    } catch (e) {
-      body.innerHTML = '';
-      body.appendChild(el('div', { class: 'placeholder' }, [
-        el('div', { class: 'placeholder-title', text: '加载失败' }),
-        el('div', { class: 'placeholder-sub', text: e.message }),
-      ]));
-      summary.textContent = '—';
-    }
-  }
-
-  function renderPicker(state, onChange) {
-    const body = $('#picker-body');
-    const summary = $('#picker-summary');
-    body.innerHTML = '';
-
-    if (!state.novels.length) {
-      summary.textContent = '素材库为空';
-      body.appendChild(el('div', { class: 'placeholder' }, [
-        el('div', { class: 'placeholder-title', text: '素材库为空' }),
-        el('div', { class: 'placeholder-sub', html:
-          '请先去 <a href="/novels" target="_blank" rel="noopener">素材库</a> 上传小说文件。' }),
-      ]));
-      onChange();
-      return;
+      label.textContent = count > 0 ? `启动拆解 · ${count} 个素材` : '启动拆解';
     }
 
-    summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
-
-    state.novels.forEach(n => {
-      const checked = state.selected.has(n.name);
-      const row = el('label', {
-        class: 'novel-pick' + (checked ? ' is-checked' : '') +
-               (n.encoding_ok ? '' : ' is-bad'),
-      }, [
-        el('input', {
-          type: 'checkbox',
-          class: 'novel-checkbox',
-          'data-name': n.name,
-          checked: checked ? 'checked' : null,
-          onchange: (e) => {
-            if (e.target.checked) state.selected.add(n.name);
-            else state.selected.delete(n.name);
-            row.classList.toggle('is-checked', e.target.checked);
-            summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
-            onChange();
-          },
-        }),
-        el('span', { class: 'novel-pick-box' }),
-        el('div', { class: 'novel-pick-main' }, [
-          el('div', { class: 'novel-pick-name', text: n.name }),
-          el('div', { class: 'novel-pick-meta' }, [
-            el('span', { text: n.size_human }),
-            el('span', { class: 'sep', text: '·' }),
-            el('span', { text: (n.estimated_chapters || 0).toLocaleString() + ' 章' }),
-            el('span', { class: 'sep', text: '·' }),
-            el('span', { class: 'fmt-chip' + (n.detected_format === 'none' ? ' fmt-none' : ''),
-                         text: n.detected_format || '—' }),
-            n.encoding_ok ? null :
-              el('span', { class: 'novel-pick-warn', title: 'UTF-8 解码失败',
-                           text: '⚠ 编码异常' }),
-          ]),
-        ]),
-      ]);
-      body.appendChild(row);
-    });
-    onChange();
-  }
-
-  // ========================================================
-  // /presets/<id>/extract/progress — live poll
-  // ========================================================
-  function initProgress(gid) {
-    $('#btn-abort').addEventListener('click', async () => {
-      const ok = window.confirm('确认中断当前拆解任务？当前阶段完成后会停下。');
-      if (!ok) return;
+    async function loadNovels(state, onChange) {
+      const body = $('#picker-body');
+      const summary = $('#picker-summary');
       try {
-        await apiCall('/api/presets/' + encodeURIComponent(gid) + '/abort', { method: 'POST' });
-        toast('已发出中断信号，等待下一阶段边界…');
+        const data = await apiCall('/api/novels');
+        state.novels = data.novels || [];
+        renderPicker(state, onChange);
       } catch (e) {
-        toast('中断失败: ' + e.message, 'err');
+        body.innerHTML = '';
+        body.appendChild(el('div', { class: 'placeholder' }, [
+          el('div', { class: 'placeholder-title', text: '加载 /api/novels 失败' }),
+          el('div', { class: 'placeholder-sub', text: e.message }),
+        ]));
+        summary.textContent = '—';
       }
-    });
-    pollProgress(gid);
-  }
+    }
 
-  let _progressTimer = null;
-  async function pollProgress(gid) {
-    try {
-      const s = await apiCall('/api/presets/' + encodeURIComponent(gid) + '/status');
-      applyProgressState(s);
-      const task = s.task || {};
-      const phases = s.phases || {};
-      const allDone = ['extract', 'merge', 'draft', 'validate']
-        .every(k => (phases[k] || {}).status === 'done');
-      const done = allDone || task.running === false;
-      if (done) {
-        renderFinish(s);
-        const markEl = document.querySelector('.genre-detail-mark-spin');
-        if (markEl) markEl.classList.remove('genre-detail-mark-spin');
-        document.querySelector('.genre-detail-title').textContent =
-          task.ok === false ? '构建中断 / 失败' : '构建完成';
-        $('#btn-abort').hidden = true;
-        $('#btn-back').hidden = false;
+    function renderPicker(state, onChange) {
+      const body = $('#picker-body');
+      const summary = $('#picker-summary');
+      body.innerHTML = '';
+      if (!state.novels.length) {
+        summary.textContent = '素材库为空';
+        body.appendChild(el('div', { class: 'placeholder' }, [
+          el('div', { class: 'placeholder-title', text: '素材库为空' }),
+          el('div', { class: 'placeholder-sub', html:
+            '请先去 <a href="/novels" target="_blank" rel="noopener">素材库</a> 上传小说文件。' }),
+        ]));
+        onChange();
         return;
       }
+      summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
+
+      state.novels.forEach(n => {
+        const checked = state.selected.has(n.name);
+        const row = el('label', {
+          class: 'novel-pick' + (checked ? ' is-checked' : ''),
+        }, [
+          el('input', {
+            type: 'checkbox',
+            class: 'novel-checkbox',
+            'data-name': n.name,
+            checked: checked ? 'checked' : null,
+            onchange: (e) => {
+              if (e.target.checked) state.selected.add(n.name);
+              else state.selected.delete(n.name);
+              row.classList.toggle('is-checked', e.target.checked);
+              summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
+              onChange();
+            },
+          }),
+          el('span', { class: 'novel-pick-box' }),
+          el('div', { class: 'novel-pick-main' }, [
+            el('div', { class: 'novel-pick-name', text: n.name }),
+            el('div', { class: 'novel-pick-meta' }, [
+              el('span', { text: n.size_human || '' }),
+            ]),
+          ]),
+        ]);
+        body.appendChild(row);
+      });
+      onChange();
+    }
+  }
+
+  function showProgress(pid) {
+    const box = $('#progress-box');
+    if (!box) return;
+    box.hidden = false;
+    $('#progress-title').textContent = `拆解中 · ${pid}`;
+    $('#progress-detail').textContent = '已提交，后台运行中…';
+    $('#btn-submit').disabled = true;
+  }
+
+  async function pollJobStatus(pid) {
+    try {
+      const s = await apiCall('/api/presets/' + encodeURIComponent(pid) + '/status');
+      const detail = $('#progress-detail');
+      if (!detail) return;
+      if (s.state === 'done') {
+        $('#progress-title').textContent = `✓ 完成 · ${pid}`;
+        detail.innerHTML = '';
+        detail.appendChild(document.createTextNode('拆解完成 — '));
+        detail.appendChild(el('a', { href: '/presets/' + encodeURIComponent(pid), text: '查看题材 →' }));
+        toast('拆解完成: ' + pid, 'ok');
+        return;
+      }
+      if (s.state === 'failed') {
+        $('#progress-title').textContent = `✕ 失败 · ${pid}`;
+        detail.textContent = s.error || '（无错误信息）';
+        toast('拆解失败: ' + pid, 'err');
+        return;
+      }
+      detail.textContent = s.state === 'running' ? '运行中…' : ('状态: ' + s.state);
     } catch (e) {
-      // transient failure — keep polling
-      console.warn('poll error', e);
+      console.warn('status poll error', e);
     }
-    _progressTimer = setTimeout(() => pollProgress(gid), 3000);
-  }
-
-  function applyProgressState(s) {
-    const phases = s.phases || {};
-    const order = ['extract', 'merge', 'draft', 'validate'];
-    let activeSeen = false;
-    order.forEach(k => {
-      const ph = phases[k] || { status: 'pending' };
-      const row = document.querySelector('.phase[data-phase="' + k + '"]');
-      if (!row) return;
-      row.classList.remove('phase-active', 'phase-done');
-      if (ph.status === 'done') row.classList.add('phase-done');
-      else if (ph.status === 'in_progress') { row.classList.add('phase-active'); activeSeen = true; }
-
-      // progress bar width
-      const fill = row.querySelector('.phase-bar-fill');
-      let pct = 0;
-      if (ph.status === 'done') pct = 100;
-      else if (ph.status === 'in_progress') {
-        if (k === 'extract' && ph.batches_total) {
-          pct = Math.max(6, Math.round(100 * (ph.batches_done || 0) / ph.batches_total));
-        } else {
-          pct = 40;  // indeterminate-ish
-        }
-      }
-      fill.style.width = pct + '%';
-
-      // detail text
-      const detail = row.querySelector('.phase-detail');
-      if (k === 'extract' && ph.batches_total) {
-        detail.textContent = `${ph.batches_done || 0} / ${ph.batches_total} 批` +
-          (ph.last_batch_id ? ` · last batch ${ph.last_batch_id}` : '');
-      } else {
-        detail.textContent = ph.status || 'pending';
-      }
-    });
-
-    // In-flight card
-    const inflight = s.in_flight;
-    const box = $('#gp-inflight');
-    if (inflight) {
-      box.hidden = false;
-      $('#gp-agent').textContent = inflight.agent || 'agent';
-      const bits = [];
-      if (inflight.batch_id != null) bits.push('batch #' + inflight.batch_id);
-      if (inflight.started_at) bits.push('started ' + inflight.started_at);
-      $('#gp-agent-meta').textContent = bits.join(' · ');
-    } else {
-      box.hidden = true;
-    }
-
-    // Top meta
-    const task = s.task || {};
-    const metaBits = [];
-    if (task.dry_run) metaBits.push('dry_run');
-    if (task.with_trial) metaBits.push('with_trial');
-    if (task.started_at) {
-      const d = new Date(task.started_at * 1000);
-      metaBits.push('起 ' + d.toLocaleTimeString());
-    }
-    if (!activeSeen && task.running === false) metaBits.push('空闲');
-    $('#gp-meta').textContent = metaBits.join(' · ') || '—';
-  }
-
-  function renderFinish(s) {
-    const box = $('#gp-finish');
-    box.innerHTML = '';
-    const task = s.task || {};
-    if (task.ok === false && task.error) {
-      box.appendChild(el('div', { class: 'finish-err' }, [
-        el('strong', { text: task.error === 'aborted' ? '⏹ 已中断' : '✕ 失败' }),
-        el('br'),
-        document.createTextNode(task.error === 'aborted' ? '在下一阶段边界停下。' : task.error),
-      ]));
-    } else {
-      box.appendChild(el('div', { class: 'finish-ok', text: '✓ 构建完成 — 4 阶段全部 done' }));
-    }
+    setTimeout(() => pollJobStatus(pid), 3000);
   }
 
   // Expose
   window.GenreUI = {
     initIndex: initIndex,
-    initNew: initNew,
     initDetail: initDetail,
-    initExtract: initExtract,
-    initProgress: initProgress,
+    initNewFromNovel: initNewFromNovel,
   };
 })();

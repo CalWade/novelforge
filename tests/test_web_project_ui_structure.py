@@ -60,3 +60,32 @@ def test_no_stale_genres_urls_in_web():
     )
     hits = [ln for ln in result.stdout.splitlines() if ln and ln.startswith("web/")]
     assert hits == [], f"stale /genres URLs in web/: {hits}"
+
+
+def test_preset_detail_template_uses_preset_id_not_gid():
+    """Phase 5 cleanup: the detail template's view passes `preset_id`, not `gid`."""
+    text = (REPO / "web" / "templates" / "presets" / "detail.html").read_text(encoding="utf-8")
+    assert "{{ gid }}" not in text, "detail.html still references {{ gid }} (view passes preset_id)"
+    assert "{{ preset_id }}" in text, "detail.html should render {{ preset_id }} at least once"
+
+
+def test_preset_templates_have_no_dead_routes():
+    """Phase 5 cleanup: no links to removed routes (/presets/new, /presets/<id>/extract).
+
+    Scope is web/ only (docs/plans may still mention historical routes).
+    Excludes /api/presets/new-from-novel which is a valid current endpoint.
+    """
+    import subprocess
+    # Look only inside web/ and match ONLY the dead routes as HREFs or URL literals.
+    # Patterns:
+    #   href="/presets/new"           — old "new empty genre" page
+    #   href="/presets/<anything>/extract..."  — old extract flow
+    #   /api/presets/new"  or  /api/presets/new'  (exact /new, not /new-from-novel)
+    result = subprocess.run(
+        ["git", "grep", "-nE",
+         r"href=\"/presets/new\"|href=\"/presets/[^\"]+/extract|/api/presets/new[\"']",
+         "--", "web/"],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    hits = [ln for ln in result.stdout.splitlines() if ln]
+    assert hits == [], f"references to deleted routes in web/: {hits}"
