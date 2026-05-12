@@ -1,12 +1,11 @@
 """Central configuration. Loaded once at import time.
 
-Layering model (refactored 2026-05-11):
-  - genres/<genre-id>/            — shared genre definition (rules, style, era)
-  - projects/<project-id>/        — one specific novel (outline, characters,
-                                    timeline, state/)
-  - projects/<project-id>/state/  — runtime artifacts for that novel
-  - projects/.active              — pointer file; single line with the id of
-                                    the currently active project
+Layering model (book-centric):
+  - presets/<preset-id>/           — optional seed templates for new books
+  - projects/<project-id>/         — one specific novel, self-contained (includes
+                                     era.md / writing-style-extra.md / etc)
+  - projects/<project-id>/state/   — runtime artifacts (via Blackboard)
+  - projects/.active               — single-line pointer to current book
 
 STATE_DIR dynamically resolves to the active project's state/ subdir. Agents
 stay agnostic: they keep reading/writing `state/...` paths via the Blackboard
@@ -48,7 +47,8 @@ PERPLEXITY_MODEL: str = os.environ.get("PERPLEXITY_MODEL", "perplexity/sonar-pro
 
 # Paths (all relative to project root)
 PROJECT_ROOT: Path = _PROJECT_ROOT
-GENRES_DIR: Path = _PROJECT_ROOT / "genres"
+PRESETS_DIR: Path = _PROJECT_ROOT / "presets"
+GENRES_DIR: Path = PRESETS_DIR  # Deprecated alias, removed in Task 2.8 of phase 2
 PROJECTS_DIR: Path = _PROJECT_ROOT / "projects"
 ACTIVE_POINTER: Path = PROJECTS_DIR / ".active"
 
