@@ -3,7 +3,7 @@
 > **项目代号**：`genre-pipeline`
 > **定位**：Novelforge 的第二条流水线——**建 / 补 / 审 / 拆**题材包
 > **核心决策**：薄壳流水线，90% 复用小说流水线的工程机制，10% 是题材特有 Agent 和 schema
-> **前置文档**：[2026-05-09-novelforge-design.md](2026-05-09-novelforge-design.md)（小说流水线，已落地）
+> **前置文档**：根目录 [`AGENTS.md`](../../../AGENTS.md) + [`genres/README.md`](../../../genres/README.md) + [`projects/README.md`](../../../projects/README.md)（小说流水线目录页与题材/作品两层结构）
 
 ---
 
@@ -442,25 +442,42 @@ python3 -m src.genre_pipeline --validate-only <genre-id> [--with-trial]
 
 ---
 
-## 10. 第一版实现范围（YAGNI）
+## 10. 实现范围与进度
 
-**本 spec 第一版交付：**
+> **✅ 2026-05-12 更新**：本 spec 的第一版 + 第二版功能**已全部 ship**。以下清单按时间轴整理。
 
-- ✅ `src/core/` 下沉（只下沉 `Blackboard` + `BaseAgent`，不动别的）
-- ✅ `src/genre_pipeline/` 完整骨架 + 4 个 Agent 的**可实例化占位**（真实 prompt 可以先简化，确保结构打通）
-- ✅ CLI 全部 subcommand 接入 + Intent Router
-- ✅ `--new-genre` 最小实现（stub 脚手架，不跑 LLM）
-- ✅ `--extract-from-novel` 全流程打通，但**批次 Extractor 的 prompt 可以是"写出符合 schema 的占位"级别**（先证明调度和 schema 正确，真实提取质量后续迭代）
-- ✅ `--with-trial` 标志接入 + 复用 `calibrate_evaluator` 的 scratch bootstrap 代码（但允许 trial 里 Agent 直接用 mock）
-- ✅ `pytest` 测试：schema 校验 / 档位切分 / CLI 冒烟 / build_status 续跑 / core shim 向后兼容
-- ✅ `AGENTS.md` 增加题材流水线索引段（≤30 行，目录页风格）
+### 10.1 第一版（已交付）
 
-**本 spec 不交付（留给后续迭代）：**
+- ✅ `src/core/` 下沉（`Blackboard` + `BaseAgent`，shim 保留向后兼容）
+- ✅ `src/genre_pipeline/` 完整骨架 + 4 个 Agent
+- ✅ CLI 全部 subcommand 接入 + Intent Router（`--extract-only` / `--merge-only` / `--draft-only` / `--validate-only`）
+- ✅ `--new-genre` stub 脚手架
+- ✅ `--extract-from-novel` 全流程打通
+- ✅ `--with-trial` 标志接入
+- ✅ `pytest` 测试套件（schema 校验 / 档位切分 / CLI 冒烟 / build_status 续跑 / core shim 向后兼容）
+- ✅ `AGENTS.md` 增加题材流水线索引段
 
-- ❌ 四个 Agent 的**生产级 prompt**——占位 prompt 够用，生产 prompt 要基于真实小说数据调优
-- ❌ `--new-genre` 的交互问卷——先 stub 脚手架，交互后续加
-- ❌ Web UI 集成——先 CLI 能跑
-- ❌ 对现有 3 个题材包跑 `--audit-genre` 批量 CI——先跑通命令，后续进 CI
+### 10.2 第二版（已交付，超出原 YAGNI 范围）
+
+原"不交付"清单已全部补齐并超越：
+
+- ✅ **生产级 prompt**：Extractor 两步法（temp 0.3 自由笔记 → temp 0.0 verbatim 提取）+ Drafter CoD 3-pass 迭代 + Validator 对抗性 reject-by-default + deny-phrases 中英文清单（commits `32f6b21` / `fc34057` / `3d9cefd` / `203939a`）
+- ✅ **`--new-genre --interactive` 问卷式脚手架**：8 字段 + 3 多行列表问卷，产出富初稿（commit `6fc9aea`）
+- ✅ **Web UI 完整集成**：`/genres` 题材库 / `/genres/new` 新建 / `/genres/<id>` 详情 / `/genres/<id>/extract` 拆解 / `/genres/<id>/extract/progress` 进度页 + 8 个 API 路由（commit `cde3f3e`）
+- ✅ **trial 真跑 3 章试验书**：复用 `bootstrap_project` 的 scratch 隔离模式（commit `7ae51d6`）
+- ✅ **Validator → Fixer retry loop**：≤2 次 retry + ship_with_debt，对齐小说流水线（commit `a80a754`）
+- ✅ **3-tier merge**（batch → arc → book）：`GenreArcMerger` + `GenreBookDistiller`（commits `cbb997c` / `47b4224` / `8004eaf`）
+- ✅ **Validator 扇出并行 3 Auditor**：`GenreFactChecker` / `GenreConsistencyGuard` / `GenreStyleGuard`（commit `678bc66`）
+- ✅ **ChapterStream 流式 + 编码兜底**：>5MB 走流式索引；自动识别 UTF-8 / GB18030 / Big5 / Shift-JIS 等并转 UTF-8（commits `a6f1441` / `4a053fb` / `0b59b20`）
+- ✅ **多格式章节识别**：6 种（zh-standard / en-standard / zh-ordinal / roman / numeric / separator）+ 自适应档位（commits `37e2c67` / `c9f3dbd`）
+- ✅ **`extraction_tally.md` 健康报告**（commits `a52250d` / `a4217b4`）
+- ✅ **Web 素材库 `/novels`**：批量上传 + 编码检测 + 路径安全双层防御（commits `42b3a1f` / `29d5c7b` / `76cc639`）
+
+### 10.3 未来迭代（待做）
+
+- ⏳ 对现有 3 个题材包跑 `--audit-genre` 批量 CI 集成
+- ⏳ 题材文件 Web 编辑器（33 个测试已 ready，实现 pending —— 见 `tests/test_web_genre_files_api.py`）
+- ⏳ Web 端布局重构（详见根目录审计报告）
 
 ---
 

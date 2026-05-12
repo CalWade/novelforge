@@ -28,7 +28,6 @@
 **状态**：🔴 未借鉴
 **原因**：本项目 Agent 不做联网搜索。题材事实通过 setting pack 的 `era.md` + `timeline.yaml` 静态注入。设计 spec 明确砍掉 TimelineGuard/FactGuard 的原因包括「活爬网费钱且易超时」。
 **原文位置**：教程贴 L5
-**相关架构决策**：`docs/superpowers/specs/2026-05-09-novelforge-design.md` L111-114
 
 #### 1.2 搜索执行（专家级策略）
 **状态**：🔴 未借鉴 — 同上，无联网搜索能力

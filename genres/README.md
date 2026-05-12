@@ -34,6 +34,35 @@ genres/<genre-id>/
 
 ## 如何新增一个题材
 
+下面五种方式从最简单到最精细，按需选择。前 3 种只产出空壳/半成品，后续仍要手工填充或用
+`--extract-from-novel` 从已有小说拆解。
+
+### 方式 1（推荐）：Web UI
+
+启动 `flask --app web.app run --port 5055`，浏览器打开 <http://127.0.0.1:5055/genres/new>，
+按表单填 id / 名称 / 时代 / 基调等字段，提交后自动产出 4 份 stub 文件。
+
+### 方式 2：CLI 问卷式脚手架
+
+`python3 -m src.genre_pipeline --new-genre <id> --interactive` — 8 个问题 + 3 个多行列表
+（作者声音 / 禁用风格 / 避雷），产出比纯 stub 更丰富的初稿。
+
+### 方式 3：CLI 最小脚手架
+
+`python3 -m src.genre_pipeline --new-genre <id> --name "..." --era "..."` — 非交互，一行产出 4 份最小 stub。
+
+### 方式 4：从已有小说拆解（推荐给有样本的场景）
+
+```bash
+python3 -m src.genre_pipeline --extract-from-novel <id> \
+    --sources novels/a.txt,novels/b.txt
+```
+
+Extractor 两步法 + 滑窗 25 章/批扫描样本书，产出带 `evidence_chapters` / `confidence`
+的 4 份题材文件。加 `--with-trial` 可真跑 3 章试验书验证。
+
+### 方式 5：手工复制模板（高级）
+
 1. 复制任意现有题材目录作为模板
 2. 修改 `genre.yaml`：题材名 / 基调 / `author_persona_hints` / `genre_avoid` / `prohibited_styles`
 3. 改 4 份规则文件：`era.md` / `writing-style-extra.md` / `iron-laws-extra.md`（+ 可选 schema）

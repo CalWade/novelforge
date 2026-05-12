@@ -1,11 +1,23 @@
 # 从 MVP 到通用系统 · Gap 分析
 
+> **⚠️ 2026-05-12 关闭声明**
+>
+> 本文档是 **2026-05-09 到 2026-05-11 期间**的 post-MVP roadmap 快照。
+>
+> **状态**：Must 14/14 全部完成。Should 和 Could 部分完成，剩余项目已被更新的 spec/plan 覆盖或演进为新功能（题材流水线 / Web 素材库 / 章节多格式识别等）。
+>
+> **本文档不再维护**。新功能规划请看 `CHANGELOG.md` 和最新的 `docs/superpowers/specs/` 下的 spec。保留此文件是为了**历史决策脉络**——它记录了项目从 MVP 到生产骨架的 32 个 C-N 任务取舍。
+>
+> 新贡献者：不用读这份文档，看 `README.md` + `AGENTS.md` 即可建立心智模型。
+
+---
+
 > 定位从"黑客松 3 章 MVP"升级到"大而全通用多 Agent 小说写作系统"之后，
 > 针对教程贴借鉴审计（108 条）+ 现有系统形态做的 Gap 分析 + 补齐方案。
 >
 > 首次起草：2026-05-10（MVP 提交后）· Oracle 第三轮评审
 > 最后更新：2026-05-11（Must+Should 主体落地、C-5 港综 10 章长跑 + C-10 Evaluator 校准完成后）
-> 前两轮评审：docs/superpowers/specs/2026-05-09-novelforge-design.md § Oracle 事前/事后评审
+> 前两轮评审：Oracle 事前/事后评审（MVP 阶段完成）
 
 ---
 
@@ -619,10 +631,9 @@ PERPLEXITY_MODEL=perplexity/sonar-pro
 - **Evaluator 校验警告汇总**
 
 **已有仪表盘产出**（可直接查阅）：
-- `docs/dashboards/gangster-3ch-mvp.md`
+- `docs/dashboards/gangster-3ch-mvp.md`（MVP 阶段历史快照）
 - `docs/dashboards/xianxia-3ch.md`
-- `docs/dashboards/gangster-10ch-long-run.md`
-- `docs/dashboards/gangster-c5-10ch.md`
+- `docs/dashboards/gangster-c5-10ch.md`（港综 10 章完整长跑，含 Bookkeeping 账本）
 
 **测试**：`tests/test_dashboard_bookkeeping.py`（5 个用例覆盖 bookkeeping 小节的各种状态）
 

@@ -159,7 +159,6 @@ def test_project_name_is_novelforge_everywhere():
         "projects/README.md",
         "web/templates/index.html",
         "docs/index.html",
-        "docs/superpowers/specs/2026-05-09-novelforge-design.md",
         "src/__init__.py",
     ):
         p = config.PROJECT_ROOT / rel_path

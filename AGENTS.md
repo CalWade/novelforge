@@ -63,18 +63,23 @@ python -m src.genre_pipeline --extract-from-novel <id> \
 机制要点：
 - 复用 `Blackboard` / `BaseAgent`（已下沉到 `src/core/`）
 - 滑动窗口 25 章/批，三档自适应（≤50:10 / 51-600:25 / >600:40）
-- `genres/<id>/.build/`（进 `.gitignore`）是构建期工作目录：`build_status.yaml` + `extraction_notes/batch-NNN.yaml` + `genre_blueprint.yaml` + `genre_issues.jsonl`
-- Extractor 笔记严格 schema，字段对齐最终 4 份题材文件，带 `evidence_chapters` / `confidence`
-- 默认只跑结构 + LLM 语义校验（秒级+分钟级）；`--with-trial` 显式开启试验书 3 章真实验收（v1 为占位，下次迭代接入 `calibrate_evaluator` 骨架）
+- `genres/<id>/.build/`（进 `.gitignore`）是构建期工作目录：`build_status.yaml` + `extraction_notes/batch-NNN.yaml` + `genre_blueprint.yaml` + `genre_issues.jsonl` + `extraction_tally.md`
+- Extractor **两步法**（DSPy TwoStepAdapter 思路）：Step 1 自由笔记（temp 0.3）→ Step 2 verbatim 提取为严格 YAML（temp 0.0），字段对齐最终 4 份题材文件，带 `evidence_chapters` / `confidence`
+- Drafter **Chain-of-Density 3-pass 迭代**（可选开启）
+- **三级合并**：batch (25 章) → arc (每 4 批) → book distill（全量），大小说不吃满上下文
+- Validator 扇出**并行 3 Auditor**（FactChecker / ConsistencyGuard / StyleGuard）+ Tier-1 正则 deny 短语扫描
+- Validator→Fixer **≤2 次 retry loop** + ship_with_debt，对齐作品流水线
+- ChapterStream 对 >5MB 大文件走流式索引 + 自动 GB18030/Big5/Shift-JIS 等编码检测转 UTF-8
+- `--new-genre --interactive` 问卷式脚手架，产出富初稿
+- `--with-trial` 真跑 3 章试验书（复用 bootstrap_project 的 scratch 隔离）
 - Intent Router：`--extract-only` / `--merge-only` / `--draft-only` / `--validate-only` 可断点续跑单个 phase
 
 规范文档：
 - 设计：[`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)
-- 实施：[`docs/superpowers/plans/2026-05-11-genre-pipeline.md`](docs/superpowers/plans/2026-05-11-genre-pipeline.md)
 
 ## 架构 1 行说明
 
-每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。详见 [docs/superpowers/specs/2026-05-09-novelforge-design.md](docs/superpowers/specs/2026-05-09-novelforge-design.md)。
+每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。
 
 ## 题材 + 作品 两层
 

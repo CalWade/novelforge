@@ -46,16 +46,24 @@ projects/<project-id>/
 
 ## 如何新建一本书
 
+### 方式 0（最简）：Web UI 向导
+
+启动 `flask --app web.app run --port 5055` 后打开 <http://127.0.0.1:5055/>，
+点击 header 的 ◎ 项目切换按钮 → **+ 新建作品**，按向导填题材 / 主角 / 基础信息，
+自动生成 4 份源文件并完成激活，开箱即可跑流水线。
+
 ### 方式 A：一键脚手架
 
 ```bash
-python -m src.bootstrap --new-project my-book --genre gangster-hk-1983
+python3 -m src.bootstrap --new-project my-book --genre gangster-hk-1983
 ```
 
 这会在 `projects/my-book/` 下创建 `project.yaml` + 3 个最小 stub 文件。然后编辑它们，
 再跑 `--project my-book` 激活。
 
 ### 方式 B：手动复制
+
+方式 0 或方式 A 之后，如果需要更细粒度控制，也可以直接复制现有作品目录手改：
 
 1. 复制任意现有 project 目录
 2. 修改 `project.yaml` 的 `id`、`display_name`、`protagonist_name`、`protagonist_hook` 等

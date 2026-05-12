@@ -197,6 +197,38 @@ CLI 和 Web **调用同一套 Python 函数**（`src.bootstrap.bootstrap_project
 
 ---
 
+## 题材流水线（Genre Pipeline）
+
+除了上面那条**作品流水线**（每章 Planner→Generator→Evaluator→Fixer→Summarizer），Novelforge 还有一条**独立的题材流水线**，用于建 / 补 / 审 / 从已有小说拆解题材包。产物是 `genres/<id>/` 下的 4-5 份文件，**跨作品复用**——一次拆出"港综"，多本港综题材的书都能共享。
+
+### 4 种入口
+
+| 入口 | 命令 | 用途 | 调 LLM |
+|---|---|---|---|
+| 从零手建 | `python -m src.genre_pipeline --new-genre <id> [--interactive]` | 脚手架 / 问卷式初稿 | 否 |
+| 补齐缺失 | `python -m src.genre_pipeline --fill-genre <id>` | 补 stub 文件 | 否 |
+| 审查 | `python -m src.genre_pipeline --audit-genre <id>` | 结构 + LLM 语义双校验 | 是（1-3 次） |
+| 从小说拆解 | `python -m src.genre_pipeline --extract-from-novel <id> --sources a.txt,b.txt [--with-trial]` | **核心场景** · 读 N 本原著反推题材规范 | 是（几十-几百次） |
+
+断点续跑单个 phase：`--extract-only` / `--merge-only` / `--draft-only` / `--validate-only`。
+
+### Web UI 入口
+
+- `/genres` · 题材库（列表 + 状态）
+- `/genres/new` · 从零建（脚手架 / 问卷）
+- `/genres/<id>` · 题材详情（4 份文件可编辑）
+- `/genres/<id>/extract` · 从小说拆解（选素材 + 实时进度）
+- `/novels` · 素材库（上传 / 管理小说 txt）
+- 首页 header 右上有 **题材库 / 素材库** 跳转按钮
+
+### 核心机制一句话
+
+滑动窗口 **25 章/批**（三档自适应：≤50 章 10/批、51-600 章 25/批、>600 章 40/批）+ **两步法 Extractor**（Step 1 自由笔记 temp 0.3 → Step 2 verbatim 提取为严格 YAML temp 0.0）+ **Drafter Chain-of-Density 3-pass 迭代** + **Validator 扇出 3 Auditor 并行**（FactChecker / ConsistencyGuard / StyleGuard）+ **≤2 次 Fixer retry loop** + **ChapterStream 流式索引**（>5MB 大文件不吃内存）+ **6 种章节格式自动识别** + **GB18030 / Big5 / Shift-JIS 等编码自动转 UTF-8**。
+
+详细设计见 [`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)。
+
+---
+
 ## 项目结构
 
 ```
@@ -231,20 +263,34 @@ novelforge/
 ├── src/
 │   ├── config.py                    # 环境变量 + 路径 · STATE_DIR 动态指向当前项目 state/
 │   ├── llm.py                       # OpenAI 兼容的 chat 客户端 + 自动写 prompts_log.jsonl
-│   ├── blackboard.py                # 原子写 / jsonl 追加 / yaml 读写
+│   ├── blackboard.py                # shim → src/core/blackboard.py（向后兼容）
 │   ├── bootstrap.py                 # genre + project 两层注入 state/
-│   ├── pipeline.py                  # 主循环 + 按阶段重跑的多个子命令
-│   ├── agents/                      # 5 个创作 Agent + 3 个记账 Agent
-│   ├── auditors/                    # 3 个后台审计 Agent（含按需触发的 FactChecker）
+│   ├── pipeline.py                  # 作品流水线：主循环 + 按阶段重跑的多个子命令
+│   ├── core/                        # 通用抽象（2026-05-11 下沉）
+│   │   ├── blackboard.py            # 原子写 / jsonl 追加 / yaml 读写
+│   │   └── base_agent.py            # 所有 Agent 的基类（双流水线共享）
+│   ├── agents/                      # 作品流水线：5 创作 + 3 记账 Agent
+│   ├── auditors/                    # 作品流水线：3 后台审计 Agent（含 FactChecker）
+│   ├── genre_pipeline/              # 题材流水线（2026-05-11 新增）
+│   │   ├── pipeline.py / __main__.py # 主调度 + CLI
+│   │   ├── schemas.py / adaptive.py / chapter_detector.py / chapter_stream.py
+│   │   ├── tally.py / trial.py / interview.py
+│   │   ├── agents/                  # Extractor/Drafter/Validator/Fixer + ArcMerger/BookDistiller
+│   │   └── auditors/                # FactChecker/ConsistencyGuard/StyleGuard（Validator 扇出）
 │   └── tools/                       # 题材 Lint / 质量仪表盘 / Evaluator 校准
 │
+├── novels/                          # 小说素材目录（gitignore，只保留 README）
+│                                    # --extract-from-novel 的默认输入路径
+│
 ├── web/                             # Flask 动态版 UI（本地运行）
-│   ├── app.py                       # /api/state 返回账本状态等
-│   ├── templates/index.html
-│   └── static/{main.css, main.js}
+│   ├── app.py                       # 36 个路由：作品 / 题材 / 素材 / 运行 / 环境
+│   ├── templates/
+│   │   ├── index.html               # 作品首页（/）
+│   │   ├── genres/                  # 题材子站：index / new / detail / extract / progress + _base
+│   │   └── novels/                  # 素材库子站：index
+│   └── static/                      # 三套独立 CSS+JS：main / genres / novels
 │
 ├── docs/                            # 架构文档 + GitHub Pages 静态演示 + 演进路线
-│   ├── superpowers/specs/2026-05-09-novelforge-design.md
 │   ├── gap-analysis-post-mvp.md     # 后 MVP 补齐清单
 │   ├── skill-borrowings-plan.md     # skill 借鉴计划（C-22..C-32 的来源）
 │   ├── tutorial-borrowings-audit.md # 教程贴 108 条 ↔ 系统落点逐条审计
@@ -257,7 +303,7 @@ novelforge/
 │   │                                # 三份 snapshot 的 schema 说明见 demo-snapshots.md
 │   └── index.html + main.*          # GitHub Pages 静态演示页
 │
-├── tests/                           # 288 个测试用例
+├── tests/                           # 634 个 pytest 用例（2026-05-12 基线）
 ├── evaluator_calibration/           # Evaluator 校准集（10 case + 3 轮报告）
 │
 └── projects/<id>/state/             # 运行时产物（.gitignore，不进仓库）
@@ -317,7 +363,7 @@ novelforge/
 python -m pytest tests/ -v
 ```
 
-**288 个测试用例**，覆盖：
+**634 个 pytest 用例**（截至 2026-05-12），覆盖：
 
 - `test_blackboard.py` — 原子写 / jsonl 顺序保证 / YAML 往返
 - `test_verdict_schema.py` — Evaluator JSON 评分表校验 + 骨架检测器
@@ -348,7 +394,8 @@ python -m pytest tests/ -v
 
 所有文档：
 
-- **架构设计** · [`docs/superpowers/specs/2026-05-09-novelforge-design.md`](docs/superpowers/specs/2026-05-09-novelforge-design.md)
+- **架构目录页** · [`AGENTS.md`](AGENTS.md)（运行时 state 地图 + Agent 名册）
+- **题材流水线设计** · [`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)
 - **后 MVP 差距分析 + 路线图** · [`docs/gap-analysis-post-mvp.md`](docs/gap-analysis-post-mvp.md)
 - **教程贴借鉴审计** · [`docs/tutorial-borrowings-audit.md`](docs/tutorial-borrowings-audit.md)
 - **港综 10 章长跑验证报告** · [`docs/c5-10ch-validation-report.md`](docs/c5-10ch-validation-report.md)
