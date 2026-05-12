@@ -111,12 +111,8 @@ def test_web_main_js_tree_references_bookkeeping_section():
 
 
 # ---- demo_snapshot sync: each of the docs/ snapshots has representative
-# bookkeeping files so Pages viewers see them rendered.
-#
-# Before 2026-05-11 there were duplicate root-level copies too (demo_snapshot/
-# etc.) — those were bit-identical副本 that Pages never read. They've been
-# deleted; only the docs/ copies live on. See docs/demo-snapshots.md for
-# the full explanation.
+# bookkeeping files so Pages viewers see them rendered. Pages is served from
+# main:/docs so snapshots must live under docs/.
 
 @pytest.mark.parametrize(
     "snapshot_dir",

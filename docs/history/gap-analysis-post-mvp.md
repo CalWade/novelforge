@@ -1,5 +1,7 @@
 # 从 MVP 到通用系统 · Gap 分析
 
+> **📦 历史档案** · 本文件位于 `docs/history/`，是 Novelforge 早期的 roadmap 快照，不代表当前系统状态。当前状态见根目录 `README.md` 与 `AGENTS.md`。
+>
 > **⚠️ 2026-05-12 关闭声明**
 >
 > 本文档是 **2026-05-09 到 2026-05-11 期间**的 post-MVP roadmap 快照。

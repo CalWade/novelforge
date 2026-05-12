@@ -1,6 +1,6 @@
 # Novelforge Web UI 使用指南
 
-> 2026-05-12 · Novelforge 主要入口是 Web UI。本文档列出所有页面和能做的事。
+> Novelforge 的主要入口是 Web UI。本文档列出所有页面和能做的事。
 > CLI 备选方案见 `AGENTS.md` 和根 `README.md`。
 
 ## 启动
@@ -303,5 +303,5 @@ Header 四个按钮：
 - 项目总览 + 两层架构：`AGENTS.md`
 - 题材层规范：`genres/README.md`
 - 作品层规范：`projects/README.md`
-- 题材流水线设计：`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`
+- 题材流水线设计：`docs/superpowers/specs/genre-pipeline-design.md`
 - CLI 入口：`README.md`

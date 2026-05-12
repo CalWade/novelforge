@@ -2,34 +2,34 @@
 
 > *把一本小说拆给 10 个 Agent 分工生产的写作流水线。文件即记忆、对抗式审稿、三层账本、题材热插拔。*
 
-**小说锻造厂** — 把"一个 AI 一路写到黑"拆成 10 个独立 Agent 的长链路生产线。Anthropic / Cognition / OpenAI 在长链路 Agent 上踩过的 5 个坑，全部作为架构约束来设计：**状态全部沉到磁盘文件**、**对抗式审稿（默认拒稿）**、**三层账本（状态卡 / 伏笔池 / 资源账本）**、**题材随拔随换**、**规则按需披露（不塞大而全）**。
+**小说锻造厂** — 把“一个 AI 一路写到黑”拆成 10 个独立 Agent 的长链路生产线。Anthropic / Cognition / OpenAI 在长链路 Agent 上总结出的 5 条经验，全部作为架构约束来设计：**状态全部沉到磁盘文件**、**对抗式审稿（默认拒稿）**、**三层账本（状态卡 / 伏笔池 / 资源账本）**、**题材随拔随换**、**规则按需披露（不塞大而全）**。
 
-> **当前阶段**：MVP 之后必做项 + 应做项全部扫清（见 [`docs/gap-analysis-post-mvp.md`](docs/gap-analysis-post-mvp.md)，C-22..C-32 落地 + 三层账本层完工）
-> **下一阶段**：10 章以上长跑验证（✅ 港综已完成）+ Evaluator 校准集（✅ 已到 100% 一致）+ 持续集成
-> **仓库主页**：[github.com/CalWade/novelforge](https://github.com/CalWade/novelforge)
-> **在线演示**：[calwade.github.io/novelforge/](https://calwade.github.io/novelforge/)（静态只读）
+- **仓库主页**：[github.com/CalWade/novelforge](https://github.com/CalWade/novelforge)
+- **在线演示**：[calwade.github.io/novelforge/](https://calwade.github.io/novelforge/)（GitHub Pages · 静态只读）
 
 ---
 
 ## 一分钟讲清楚是什么
 
-一本小说**不是**一个 AI 从头写到尾的 —— 它由 **5 个创作 Agent + 3 个记账 Agent + 2 个后台审计 Agent** 分工合作：
+一本小说**不是**一个 AI 从头写到尾的 —— 它由 **5 个创作 Agent + 3 个记账 Agent + 3 个后台审计 Agent** 分工合作：
 
 ```
 Planner 拆节拍 → Generator 写正文 → Evaluator 挑刺 → Fixer 改稿 → Summarizer 摘要
                                                                         │
-                                       ┌─────── 记账层（三份账本）─────┤
-                                       │                                │
+                                        ┌────── 记账层（三份账本）─────┤
+                                        │                               │
                                  StatusCardUpdater               HookKeeper
                                  （当前状态卡）                  （待回收伏笔池）
-                                       │                                │
+                                        │                               │
                                  ResourceLedger
                                  （资源账本 · 可选：题材需声明 resource_schema 才启用）
-                                       │
-                                       ├──────── 扇出并行审计 ─────────┤
-                                       │                                │
-                                 AISlopGuard                    CharacterGuard
-                                 （AI 味审计）                  （人设漂移审计）
+                                        │
+                                        ├──────── 扇出并行审计 ────────┤
+                                        │                               │
+                                  AISlopGuard                    CharacterGuard
+                                  （AI 味审计）                  （人设漂移审计）
+                                        │
+                                  FactChecker（按需触发 · Perplexity 联网）
 ```
 
 每个 Agent 都用**独立的 LLM 调用、独立的 system prompt、独立的上下文窗口**（每次调用都是全新会话，不累积）。**所有状态都存在文件里**（`state/` 目录），**不在内存里**。
@@ -38,7 +38,7 @@ Planner 拆节拍 → Generator 写正文 → Evaluator 挑刺 → Fixer 改稿 
 
 **题材 = 数据**：流水线本身（`src/`）对题材一无所知。
 
-新架构（2026-05-11 重构）把"题材"和"作品"分两层：
+架构分两层：
 
 - **`genres/<id>/`** 是"什么是港综 / 仙侠 / 言情"的描述——多本书共享
 - **`projects/<id>/`** 是"这本书的主角叫林家耀、大纲是这样安排"的数据——每本独立
@@ -53,7 +53,7 @@ Planner 拆节拍 → Generator 写正文 → Evaluator 挑刺 → Fixer 改稿 
 ```
 外层（宏观）： Pipeline 主循环 — 章节线性推进
 每章内部：    Blackboard 黑板 — state/ 文件 = 所有 Agent 的唯一共享记忆
-每章产后：    扇出并行 — 2 个 Auditor 后台同时扫
+每章产后：    扇出并行 — 多个 Auditor 后台同时扫
 Evaluator：   半对抗辩论 — 对抗人设 + 结构化 JSON 评分表 + 骨架检测器（防模型复制 prompt 示例）
 ```
 
@@ -79,18 +79,17 @@ Evaluator：   半对抗辩论 — 对抗人设 + 结构化 JSON 评分表 + 骨
 
 | 难题 | 出处 | 本项目对策 |
 |---|---|---|
-| ① 反复失败、没有反馈链路 | Anthropic | 所有 Agent 无状态；失败写入 `issues.jsonl` + `debt.jsonl`；下一轮 Fixer 从文件读重新开一个干净会话 |
+| ① 反复失败、没有反馈链路 | Anthropic | 所有 Agent 无状态；失败写入 `issues.jsonl` + `debt.jsonl`；下一轮 Fixer 从文件读并开一个干净会话 |
 | ② 自评过于乐观 | Anthropic | 五个独立 Agent + Evaluator **默认拒稿的"对抗人设"** + **结构化 JSON 评分表**（18 个雷点逐条打分）+ **骨架检测器**（防模型复制示例 prompt 里的 `…` 占位符） |
 | ③ 上下文焦虑（越写越慌） | Cognition | 每次调用都是**全新会话**；只读它需要的 1-2 个文件；Summarizer **独立会话**，只读最终章节正文，不读 plan/issues（防"立场后门"泄漏） |
-| ④ AI 味代码堆积 | OpenAI Codex | `rules/*.md` + `genres/<id>/iron-laws-extra.md` 就是黄金原则；每章跑完自动触发 2 个后台 Auditor，产出独立补丁文件；Evaluator 两轮重试仍不过 → **带病上线**（写入 `debt.jsonl`，避免死循环） |
-| ⑤ 规则文件百科病 | OpenAI | `AGENTS.md` **只 100 行目录页**；详细拆到 `rules/` 通用 + `genres/<id>/` 题材特有；每个 Agent 只加载它需要的那 1-2 份 |
+| ④ AI 味代码堆积 | OpenAI Codex | `rules/*.md` + `genres/<id>/iron-laws-extra.md` 就是黄金原则；每章跑完自动触发后台 Auditor，产出独立补丁文件；Evaluator 两轮重试仍不过 → **带病上线**（写入 `debt.jsonl`，避免死循环） |
+| ⑤ 规则文件百科病 | OpenAI | `AGENTS.md` **只做目录页**；详细拆到 `rules/` 通用 + `genres/<id>/` 题材特有；每个 Agent 只加载它需要的那 1-2 份 |
 
 ---
 
-## Genre + Project 两层架构（2026-05-11 重构）
+## Genre + Project 两层架构
 
-历史原因，"题材包"之前是单层 `settings/<name>/`，同时承载**题材定义**和**单一作品数据**——
-单本书场景下没问题，但架构逻辑混乱。重构为两层：
+**题材层**和**作品层**分离，是为了让同一个题材下能独立存在任意多本书。
 
 ### `genres/<id>/` · 题材层（共享）
 
@@ -132,11 +131,11 @@ python -m src.bootstrap --project my-book
 
 ### 内置三组
 
-| 题材 | 作品 | 主角 | 状态 |
+| 题材 | 作品 | 主角 | 资源账本 |
 |---|---|---|---|
-| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 跑过 10 章 |
-| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 跑过 3 章 |
-| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ⚠️ 未跑 LLM |
+| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 情报值/黑金/人情/仇家 |
+| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 灵石/灵草/境界/法器/因果 |
+| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ❌（刻意不数值化） |
 
 详见 [`genres/README.md`](genres/README.md) 和 [`projects/README.md`](projects/README.md)。
 
@@ -144,7 +143,7 @@ python -m src.bootstrap --project my-book
 
 ## 如何跑
 
-### 推荐路径：Web 端全流程（2026-05-11 起）
+### 推荐路径：Web 端全流程
 
 ```bash
 # 1. 克隆 + 环境
@@ -153,7 +152,7 @@ cd novelforge
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. 启动 Web（即可，不用先 cp .env / 先 bootstrap）
+# 2. 启动 Web（不用先 cp .env / 先 bootstrap）
 flask --app web.app run --port 5055
 # 浏览器打开 http://localhost:5055/
 ```
@@ -164,9 +163,9 @@ flask --app web.app run --port 5055
 2. **选作品**：从 3 个内置作品里挑一本激活（港综·林家耀 / 仙侠·裴长宁 / 都市言情·沈若微），或点「+ 新建作品」选题材脚手架一本新的。
 3. 主界面出来。顶部的 **▶ 开始 / ⏹ 中断** 控制面板支持 9 种运行模式（单章 / 批量 / 出版包装 / 只重排大纲 / 只重写 / 只重评 / 只跑修复 / 只重审计 / 只刷台账），点 ⚙ 可以随时改 API Key。
 
-切换作品、编辑元信息（`project.yaml / outline.json / characters.yaml / timeline.yaml`）、看每次 LLM 调用、查技术债——全部在浏览器里。
+切换作品、编辑元信息（`project.yaml / outline.json / characters.yaml / timeline.yaml`）、看每次 LLM 调用、查技术债——全部在浏览器里。详细页面说明见 [`docs/web-ui-guide.md`](docs/web-ui-guide.md)。
 
-### CLI 路径（脚本化 / CI / 老用户）
+### CLI 路径（脚本化 / CI）
 
 ```bash
 cp .env.example .env
@@ -225,7 +224,7 @@ CLI 和 Web **调用同一套 Python 函数**（`src.bootstrap.bootstrap_project
 
 滑动窗口 **25 章/批**（三档自适应：≤50 章 10/批、51-600 章 25/批、>600 章 40/批）+ **两步法 Extractor**（Step 1 自由笔记 temp 0.3 → Step 2 verbatim 提取为严格 YAML temp 0.0）+ **Drafter Chain-of-Density 3-pass 迭代** + **Validator 扇出 3 Auditor 并行**（FactChecker / ConsistencyGuard / StyleGuard）+ **≤2 次 Fixer retry loop** + **ChapterStream 流式索引**（>5MB 大文件不吃内存）+ **6 种章节格式自动识别** + **GB18030 / Big5 / Shift-JIS 等编码自动转 UTF-8**。
 
-详细设计见 [`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)。
+详细设计见 [`docs/superpowers/specs/genre-pipeline-design.md`](docs/superpowers/specs/genre-pipeline-design.md)。
 
 ---
 
@@ -233,16 +232,18 @@ CLI 和 Web **调用同一套 Python 函数**（`src.bootstrap.bootstrap_project
 
 ```
 novelforge/
-├── AGENTS.md                        # 70 行运行时目录页
+├── AGENTS.md                        # 运行时目录页（state 地图 + Agent 名册）
 ├── README.md                        # 本文件
+├── CHANGELOG.md                     # 发布变更日志
 ├── requirements.txt
 ├── .env.example
 │
 ├── rules/                           # 通用规则（题材无关）
 │   ├── 00-information-priority.md   # 信息源优先级（冲突仲裁协议 R1..R5）
-│   ├── 24-iron-laws.md              # 28 条通用铁律（1-24 原版 + 25-28 新增）
+│   ├── 24-iron-laws.md              # 28 条通用铁律
 │   ├── 18-landmines.md              # 18 个通用雷点（含高疲劳词黑名单）
-│   └── writing-style-core.md        # 通用写作风格（六步分析 + 代入感六支柱 + Show-Don't-Tell）
+│   ├── writing-style-core.md        # 通用写作风格（六步分析 + 代入感六支柱 + Show-Don't-Tell）
+│   └── deny-phrases-{zh,en}.txt     # Tier-1 deny-phrase 正则扫描清单
 │
 ├── genres/                          # 题材层：描述某一类题材（多本书共享）
 │   ├── README.md                    # 怎么新增题材
@@ -253,10 +254,10 @@ novelforge/
 ├── projects/                        # 作品层：一本具体的小说
 │   ├── README.md                    # 怎么新增作品
 │   ├── .active                      # 单行文本，记录当前激活的项目 id
-│   ├── gangster-hk-1983-linjiayao/  # 林家耀的故事（基于 gangster-hk-1983）
+│   ├── gangster-hk-1983-linjiayao/  # 林家耀的故事
 │   │   ├── project.yaml             # 关键字段：genre = gangster-hk-1983
 │   │   ├── outline.json / characters.yaml / timeline.yaml
-│   │   └── state/                   # .gitignore 以下这部分；运行时拷入 + Agent 写入
+│   │   └── state/                   # .gitignore；运行时拷入 + Agent 写入
 │   ├── xianxia-ascension-peichangning/   # 裴长宁飞升记
 │   └── urban-romance-shenruowei/    # 沈若微记事
 │
@@ -266,12 +267,12 @@ novelforge/
 │   ├── blackboard.py                # shim → src/core/blackboard.py（向后兼容）
 │   ├── bootstrap.py                 # genre + project 两层注入 state/
 │   ├── pipeline.py                  # 作品流水线：主循环 + 按阶段重跑的多个子命令
-│   ├── core/                        # 通用抽象（2026-05-11 下沉）
+│   ├── core/                        # 通用抽象
 │   │   ├── blackboard.py            # 原子写 / jsonl 追加 / yaml 读写
 │   │   └── base_agent.py            # 所有 Agent 的基类（双流水线共享）
 │   ├── agents/                      # 作品流水线：5 创作 + 3 记账 Agent
 │   ├── auditors/                    # 作品流水线：3 后台审计 Agent（含 FactChecker）
-│   ├── genre_pipeline/              # 题材流水线（2026-05-11 新增）
+│   ├── genre_pipeline/              # 题材流水线
 │   │   ├── pipeline.py / __main__.py # 主调度 + CLI
 │   │   ├── schemas.py / adaptive.py / chapter_detector.py / chapter_stream.py
 │   │   ├── tally.py / trial.py / interview.py
@@ -283,28 +284,26 @@ novelforge/
 │                                    # --extract-from-novel 的默认输入路径
 │
 ├── web/                             # Flask 动态版 UI（本地运行）
-│   ├── app.py                       # 36 个路由：作品 / 题材 / 素材 / 运行 / 环境
+│   ├── app.py                       # 路由：作品 / 题材 / 素材 / 运行 / 环境
 │   ├── templates/
 │   │   ├── index.html               # 作品首页（/）
 │   │   ├── genres/                  # 题材子站：index / new / detail / extract / progress + _base
 │   │   └── novels/                  # 素材库子站：index
 │   └── static/                      # 三套独立 CSS+JS：main / genres / novels
 │
-├── docs/                            # 架构文档 + GitHub Pages 静态演示 + 演进路线
-│   ├── gap-analysis-post-mvp.md     # 后 MVP 补齐清单
-│   ├── skill-borrowings-plan.md     # skill 借鉴计划（C-22..C-32 的来源）
-│   ├── tutorial-borrowings-audit.md # 教程贴 108 条 ↔ 系统落点逐条审计
-│   ├── c5-10ch-validation-report.md # 港综 10 章长跑验证报告
-│   ├── c10-evaluator-calibration-report.md # Evaluator 三轮校准报告
+├── docs/                            # 架构文档 + GitHub Pages 静态演示
+│   ├── web-ui-guide.md              # Web UI 页面与 API 手册
+│   ├── Agent 搭建难题.md            # 5 条长链路 Agent 经验总结
 │   ├── rules/                       # 和根目录 rules/ 同步（Pages 数据源）
 │   ├── demo_snapshot/               # 港综 3 章产物（Pages 数据源 1）
 │   ├── demo_snapshot_xianxia/       # 仙侠 3 章产物（Pages 数据源 2）
 │   ├── demo_snapshot_gangster_c5_10ch/ # 港综 10 章完整长跑（Pages 数据源 3）
-│   │                                # 三份 snapshot 的 schema 说明见 demo-snapshots.md
+│   ├── superpowers/specs/           # 设计规格（题材流水线等）
+│   ├── history/                     # 历史/决策脉络档案（只读归档）
 │   └── index.html + main.*          # GitHub Pages 静态演示页
 │
-├── tests/                           # 634 个 pytest 用例（2026-05-12 基线）
-├── evaluator_calibration/           # Evaluator 校准集（10 case + 3 轮报告）
+├── tests/                           # pytest 测试套件
+├── evaluator_calibration/           # Evaluator 校准集
 │
 └── projects/<id>/state/             # 运行时产物（.gitignore，不进仓库）
     ├── setting.yaml                 # 运行时合成（genre.yaml + project.yaml 合并）
@@ -329,7 +328,7 @@ novelforge/
 
 系统有两套 UI：
 
-- **`web/` Flask 动态版**：**默认入口**（见 [如何跑 · 推荐路径](#推荐路径web-端全流程2026-05-11-起)）。读本地 `state/` 实时刷新，按钮真的会调流水线；支持首次启动向导、9 种运行模式、项目切换、.env 在线编辑、源文件可视化修改（`PUT /api/project-files` 会 `preserve_progress` 地重新 seed 到 state/）、中断正在运行的 pipeline（协作式 `CANCEL_EVENT`）
+- **`web/` Flask 动态版**：**默认入口**（见 [如何跑 · 推荐路径](#推荐路径web-端全流程)）。读本地 `state/` 实时刷新，按钮真的会调流水线；支持首次启动向导、9 种运行模式、项目切换、.env 在线编辑、源文件可视化修改（`PUT /api/project-files` 会 `preserve_progress` 地重新 seed 到 state/）、中断正在运行的 pipeline（协作式 `CANCEL_EVENT`）
 - **`docs/` 静态只读版**：读冻结的快照目录，纯展示用（GitHub Pages 托管）
 
 两套都是三面板布局：
@@ -363,7 +362,7 @@ novelforge/
 python -m pytest tests/ -v
 ```
 
-**634 个 pytest 用例**（截至 2026-05-12），覆盖：
+pytest 套件覆盖：
 
 - `test_blackboard.py` — 原子写 / jsonl 顺序保证 / YAML 往返
 - `test_verdict_schema.py` — Evaluator JSON 评分表校验 + 骨架检测器
@@ -371,7 +370,7 @@ python -m pytest tests/ -v
 - `test_packaging.py` — 出版包装 Agent
 - `test_setting_lint.py` + `test_bootstrap_and_settings.py` — 题材包校验 + 可选资源定义注入/切换清理
 - `test_status_card_updater.py` / `test_hook_keeper.py` / `test_resource_ledger.py` — 3 个记账 Agent 的 prompt 构造 + 数据隔离边界
-- `test_planner_extensions.py` / `test_generator_extensions.py` / `test_evaluator_fixer_extensions.py` — 新字段（章节类型 / 场景推进项 / 写作自检 / 风格锁定 / 信息源优先级）
+- `test_planner_extensions.py` / `test_generator_extensions.py` / `test_evaluator_fixer_extensions.py` — 章节类型 / 场景推进项 / 写作自检 / 风格锁定 / 信息源优先级字段
 - `test_pipeline_intent_router.py` — 5 个子命令的 CLI 分发 + 全链路顺序验证（LLM 调用被 mock 掉，不烧 token）
 - `test_fact_checker.py` — FactChecker 的触发门控 + 联网核查 + 优雅降级
 - `test_isolation_boundaries.py` — 数据隔离回归守卫（Generator/Evaluator/Summarizer 不得读账本文件）
@@ -382,26 +381,16 @@ python -m pytest tests/ -v
 
 ---
 
-## 设计文档与演进路线
-
-系统经过**三轮独立 Oracle（架构顾问）评审**，每轮都采纳了关键修改：
-
-| 评审 | 发现 | 采纳 |
-|---|---|---|
-| 实施前 | 架构真的体现了 5 大难题吗？ | 独立 Summarizer、Auditor 从 4 砍到 2、加 Prompt 检查器 UI |
-| 实施后 | Evaluator 有 2 章假过（返回了 prompt 骨架） | 加骨架检测器、AISlopGuard 改写质量收紧、UI 加难题对照页 |
-| 升级思考 | MVP → 通用系统还差什么？ | 9 个必做项 / 18 个应做项清单 + 5 周路线图 |
-
-所有文档：
+## 设计文档
 
 - **架构目录页** · [`AGENTS.md`](AGENTS.md)（运行时 state 地图 + Agent 名册）
-- **题材流水线设计** · [`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)
-- **后 MVP 差距分析 + 路线图** · [`docs/gap-analysis-post-mvp.md`](docs/gap-analysis-post-mvp.md)
-- **教程贴借鉴审计** · [`docs/tutorial-borrowings-audit.md`](docs/tutorial-borrowings-audit.md)
-- **港综 10 章长跑验证报告** · [`docs/c5-10ch-validation-report.md`](docs/c5-10ch-validation-report.md)
-- **Evaluator 三轮校准报告** · [`docs/c10-evaluator-calibration-report.md`](docs/c10-evaluator-calibration-report.md)
-- **运行时目录页** · [`AGENTS.md`](AGENTS.md)
-- **题材包系统** · [`genres/README.md`](genres/README.md)  +  [`projects/README.md`](projects/README.md)
+- **Web UI 手册** · [`docs/web-ui-guide.md`](docs/web-ui-guide.md)
+- **题材流水线设计** · [`docs/superpowers/specs/genre-pipeline-design.md`](docs/superpowers/specs/genre-pipeline-design.md)
+- **5 条长链路 Agent 经验** · [`docs/Agent 搭建难题.md`](docs/Agent%20搭建难题.md)
+- **题材层规范** · [`genres/README.md`](genres/README.md)
+- **作品层规范** · [`projects/README.md`](projects/README.md)
+- **发布变更日志** · [`CHANGELOG.md`](CHANGELOG.md)
+- **历史决策档案** · [`docs/history/`](docs/history/)（gap analysis / 校准报告 / 借鉴审计等早期脚络文档，只读归档）
 
 ---
 

@@ -1,6 +1,7 @@
 # C-5 长跑验证报告 · 港综 10 章（gangster-hk-1983）
 
-**日期**：2026-05-10/11（实时进行）
+> **📦 历史档案** · 本文件位于 `docs/history/`，是某次时点长跑的实测报告，产出见 `docs/demo_snapshot_gangster_c5_10ch/`。
+
 **Setting**：`gangster-hk-1983` · 港综同人 1983
 **Commit 基准**：`bad8eea`（含 Lesson-3 bookkeeping 三层账本 + FactChecker A-1）
 

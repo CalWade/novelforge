@@ -5,7 +5,7 @@ are not yet implemented in web/app.py. The module-level pytestmark below
 skips the entire file until the routes land. Remove the skipmark when
 implementing /api/genres/<id>/files/* to enable TDD green.
 
-Tracked in: docs/superpowers/specs/2026-05-11-genre-pipeline-design.md §10.3
+Tracked in: docs/superpowers/specs/genre-pipeline-design.md §10.3
 
 Covers the 4 endpoints added under /api/genres/<id>/files/*:
 
@@ -37,7 +37,7 @@ from web.app import app
 # Skip the whole module until the target routes are implemented.
 # Remove this when /api/genres/<id>/files/* lands.
 pytestmark = pytest.mark.skip(
-    reason="routes not yet implemented; see docs/superpowers/specs/2026-05-11-genre-pipeline-design.md §10.3",
+    reason="routes not yet implemented; see docs/superpowers/specs/genre-pipeline-design.md §10.3",
 )
 from src import config
 

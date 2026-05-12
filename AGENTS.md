@@ -7,7 +7,7 @@
 
 **Novelforge · 小说锻造厂** — 通用多 Agent 小说写作流水线。外层 Pipeline + 内层 Blackboard + Auditor Fan-Out + Evaluator 半 Debate + Lesson-3 三层 Bookkeeping。
 
-**两层架构（2026-05-11 重构）**：
+**两层架构**：
 - **题材层**（`genres/<genre-id>/`）：描述什么是港综 / 仙侠 / 言情。多本书共享。
 - **作品层**（`projects/<project-id>/`）：描述一本具体的小说。每本书独立。
 
@@ -61,7 +61,7 @@ python -m src.genre_pipeline --extract-from-novel <id> \
 ```
 
 机制要点：
-- 复用 `Blackboard` / `BaseAgent`（已下沉到 `src/core/`）
+- 复用 `Blackboard` / `BaseAgent`（位于 `src/core/`）
 - 滑动窗口 25 章/批，三档自适应（≤50:10 / 51-600:25 / >600:40）
 - `genres/<id>/.build/`（进 `.gitignore`）是构建期工作目录：`build_status.yaml` + `extraction_notes/batch-NNN.yaml` + `genre_blueprint.yaml` + `genre_issues.jsonl` + `extraction_tally.md`
 - Extractor **两步法**（DSPy TwoStepAdapter 思路）：Step 1 自由笔记（temp 0.3）→ Step 2 verbatim 提取为严格 YAML（temp 0.0），字段对齐最终 4 份题材文件，带 `evidence_chapters` / `confidence`
@@ -75,7 +75,7 @@ python -m src.genre_pipeline --extract-from-novel <id> \
 - Intent Router：`--extract-only` / `--merge-only` / `--draft-only` / `--validate-only` 可断点续跑单个 phase
 
 规范文档：
-- 设计：[`docs/superpowers/specs/2026-05-11-genre-pipeline-design.md`](docs/superpowers/specs/2026-05-11-genre-pipeline-design.md)
+- 设计：[`docs/superpowers/specs/genre-pipeline-design.md`](docs/superpowers/specs/genre-pipeline-design.md)
 
 ## 架构 1 行说明
 
@@ -124,11 +124,11 @@ python -m src.genre_pipeline --extract-from-novel <id> \
 
 ### 内置三组（题材 × 作品）
 
-| 题材 id | 作品 id | 主角 | 状态 |
+| 题材 id | 作品 id | 主角 | 资源账本 |
 |---|---|---|---|
-| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 跑过 10 章 |
-| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 跑过 3 章 |
-| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ⚠️ 未跑 LLM |
+| `gangster-hk-1983` | `gangster-hk-1983-linjiayao` | 林家耀 | ✅ 情报值/黑金/人情/仇家 |
+| `xianxia-ascension` | `xianxia-ascension-peichangning` | 裴长宁 | ✅ 灵石/灵草/境界/法器/因果 |
+| `urban-romance-contemporary` | `urban-romance-shenruowei` | 沈若微 | ❌（刻意不数值化） |
 
 ## State 目录地图
 

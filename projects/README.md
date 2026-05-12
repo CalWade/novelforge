@@ -85,11 +85,11 @@ python3 -m src.bootstrap --new-project my-book --genre gangster-hk-1983
 
 ## 已提供的作品
 
-| 项目 id | 基于题材 | 主角 | 状态 |
-|---|---|---|---|
-| `gangster-hk-1983-linjiayao` | gangster-hk-1983 | 林家耀 | ✅ 跑过 10 章 |
-| `xianxia-ascension-peichangning` | xianxia-ascension | 裴长宁 | ✅ 跑过 3 章 |
-| `urban-romance-shenruowei` | urban-romance-contemporary | 沈若微 | ⚠️ 未跑 LLM |
+| 项目 id | 基于题材 | 主角 |
+|---|---|---|
+| `gangster-hk-1983-linjiayao` | gangster-hk-1983 | 林家耀 |
+| `xianxia-ascension-peichangning` | xianxia-ascension | 裴长宁 |
+| `urban-romance-shenruowei` | urban-romance-contemporary | 沈若微 |
 
 ## 题材层 vs 作品层
 

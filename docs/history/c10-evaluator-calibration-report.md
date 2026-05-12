@@ -1,6 +1,7 @@
 # C-10 Evaluator 校准集基线报告
 
-**日期**：2026-05-11
+> **📦 历史档案** · 本文件位于 `docs/history/`，记录 Evaluator prompt 校准过程。当前 Evaluator 规则见 `rules/18-landmines.md` 与 `rules/24-iron-laws.md`。
+
 **三轮数据** · **commit c061b95 → 扩 case → prompt 调优**
 
 ---
