@@ -54,13 +54,14 @@ class OutlineDrafter:
             f"目标章数：{chapter_count_target}\n\n"
             f"故事梗概：\n{synopsis}\n"
         )
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user},
-        ]
         try:
-            resp = llm.chat(messages, temperature=0.4)
-            raw = resp.get("content") or ""
+            raw = llm.chat(
+                system=SYSTEM_PROMPT,
+                user=user,
+                agent_name="outline_drafter",
+                temperature=0.4,
+                response_format="json",
+            ) or ""
             # strip accidental markdown fences
             if raw.startswith("```"):
                 raw = raw.strip("`").partition("\n")[2].rpartition("```")[0]

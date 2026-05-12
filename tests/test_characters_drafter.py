@@ -14,8 +14,8 @@ def stub_llm(monkeypatch):
             {"name": "苏婷", "role": "情报线", "description": "记者。"},
         ],
     }
-    def fake_chat(messages, **kwargs):
-        return {"content": yaml.safe_dump(canned, allow_unicode=True, sort_keys=False)}
+    def fake_chat(system, user, *, agent_name, **kwargs):
+        return yaml.safe_dump(canned, allow_unicode=True, sort_keys=False)
     monkeypatch.setattr("src.llm.chat", fake_chat)
     return canned
 
@@ -39,8 +39,8 @@ def test_characters_drafter_empty_brief_returns_shell():
 
 
 def test_characters_drafter_bad_yaml_falls_back_to_shell(monkeypatch):
-    def bad_chat(messages, **kwargs):
-        return {"content": "::: not: [yaml"}
+    def bad_chat(system, user, *, agent_name, **kwargs):
+        return "::: not: [yaml"
     monkeypatch.setattr("src.llm.chat", bad_chat)
     from src.agents.characters_drafter import CharactersDrafter
     out = CharactersDrafter().run(brief="blah", protagonist_name="H")

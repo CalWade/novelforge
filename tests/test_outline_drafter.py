@@ -10,17 +10,14 @@ import pytest
 @pytest.fixture
 def stub_llm(monkeypatch):
     """Patch the shared LLM client to return a canned JSON string."""
-    def fake_chat(messages, **kwargs):
-        return {
-            "content": json.dumps({
-                "title": "Test Book",
-                "chapters": [
-                    {"index": 1, "title": "Arrival", "beats": ["开场", "建立冲突"]},
-                    {"index": 2, "title": "Plot Thickens", "beats": ["反转"]},
-                ]
-            }, ensure_ascii=False),
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-        }
+    def fake_chat(system, user, *, agent_name, **kwargs):
+        return json.dumps({
+            "title": "Test Book",
+            "chapters": [
+                {"index": 1, "title": "Arrival", "beats": ["开场", "建立冲突"]},
+                {"index": 2, "title": "Plot Thickens", "beats": ["反转"]},
+            ]
+        }, ensure_ascii=False)
     monkeypatch.setattr("src.llm.chat", fake_chat)
     return fake_chat
 
@@ -49,8 +46,8 @@ def test_outline_drafter_empty_synopsis_returns_blank_shell():
 
 def test_outline_drafter_falls_back_to_shell_on_bad_json(monkeypatch):
     """If LLM returns non-JSON gibberish, return a blank shell instead of crashing."""
-    def bad_chat(messages, **kwargs):
-        return {"content": "not valid json at all", "usage": {}}
+    def bad_chat(system, user, *, agent_name, **kwargs):
+        return "not valid json at all"
     monkeypatch.setattr("src.llm.chat", bad_chat)
     from src.agents.outline_drafter import OutlineDrafter
     agent = OutlineDrafter()
