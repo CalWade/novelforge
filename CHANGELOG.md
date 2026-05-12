@@ -8,7 +8,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Dates are local
 
 - 题材文件的 Web 端结构化编辑器（`era.md` / `iron-laws-extra.md` / `writing-style-extra.md`）
 - Web UI 布局重构（首页 / 作品视图 / 题材视图三栏对齐）
-- CI 集成 `--audit-genre` 冒烟（当前仅跑 pytest + snapshot schema 校验）
 
 ---
 
