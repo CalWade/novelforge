@@ -14,5 +14,8 @@ projects/*/state/
 # of the docs/ copies and got deleted on 2026-05-11.
 
 genres/*/.build/
-novels/
-!novels/README.md
+# novels/ at repo root is ignored (local novel source material, usually
+# copyrighted). Use a leading slash so this doesn't match web/templates/novels/
+# or similar subdir patterns.
+/novels/
+!/novels/README.md

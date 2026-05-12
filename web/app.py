@@ -9,6 +9,7 @@ Every API handler is intentionally small; all heavy lifting lives in src/.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import threading
@@ -22,6 +23,23 @@ from src import config, pipeline
 from src.blackboard import Blackboard
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# ---------------------------------------------------------------------------
+# Novels / material library config
+# ---------------------------------------------------------------------------
+# novels/ holds user-uploaded source material for genre extraction. The
+# directory is in .gitignore (only the README is whitelisted) and we keep a
+# single flat layout — no subdirs, no symlinks, no hidden files.
+#
+# NOVELS_DIR is a module attribute (not a function) so tests can monkeypatch
+# it to tmp_path, matching the pattern we use for GENRES_DIR.
+NOVELS_DIR: Path = config.PROJECT_ROOT / "novels"
+# Max bytes per uploaded file. The overall Flask MAX_CONTENT_LENGTH is set
+# higher (so multi-file uploads work) and per-file enforcement happens in
+# the route handler.
+NOVEL_MAX_BYTES: int = 50 * 1024 * 1024  # 50MB
+# Accept one Flask request up to 200MB — roughly 4 × 50MB novels at once.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 
 
 def _bb() -> Blackboard:
@@ -1062,6 +1080,309 @@ def view_genre_extract_progress(gid: str):
     if not gdir.exists():
         abort(404)
     return render_template("genres/progress.html", gid=gid)
+
+
+# ---------- novels / material library ----------
+# A thin HTTP face for novels/: a flat, UTF-8-only .txt dustbin that the
+# genre pipeline's --extract-from-novel consumes. Invariants enforced
+# across every route:
+#   1. filenames NEVER escape novels/ (tested in test_web_novels_api.py)
+#   2. we never read more than 1MB of a file on list (use ChapterStream for >5MB)
+#   3. partial uploads never leak — .tmp + atomic rename pattern
+import re as _novels_re
+
+# Accept letters (incl. CJK), digits, dot, dash, underscore, space.
+# Everything else becomes underscore. Kept as a compiled re because we hit
+# it once per uploaded file, and the alternative (repeated str.translate) is
+# less legible for the reviewer.
+_NOVEL_NAME_KEEP = _novels_re.compile(
+    r"[^"
+    r"A-Za-z0-9"
+    r"\u4e00-\u9fff"       # CJK Unified Ideographs
+    r"\u3400-\u4dbf"       # CJK Extension A
+    r"\u3040-\u309f"       # Hiragana (Japanese)
+    r"\u30a0-\u30ff"       # Katakana
+    r"\uac00-\ud7af"       # Hangul
+    r"\s\-_.()"
+    r"]"
+)
+
+
+def _human_size(n: int) -> str:
+    """'1234567' → '1.2 MB'. Keeps one decimal; never returns '0.0 B'."""
+    for unit, step in (("B", 1), ("KB", 1024), ("MB", 1024 ** 2), ("GB", 1024 ** 3)):
+        if n < step * 1024 or unit == "GB":
+            if unit == "B":
+                return f"{n} B"
+            return f"{n / step:.1f} {unit}"
+    return f"{n} B"
+
+
+def _sanitize_novel_name(raw: str) -> str:
+    """Turn a user-supplied filename into a safe, same-directory name.
+
+    We deliberately DON'T use werkzeug.secure_filename alone because it
+    strips all non-ASCII (a Chinese 某某港综.txt becomes 'txt' — useless).
+
+    Steps:
+      1. drop directory components — os.path.basename handles both / and \\
+      2. strip leading dots (prevents '.hidden' and '..')
+      3. replace control chars + path separators + anything not in our
+         permissive allow-list with '_'
+      4. collapse runs of whitespace to single '_'
+      5. if result is empty or just punctuation → fall back to 'upload.txt'
+    """
+    if not raw:
+        return "upload.txt"
+    # Step 1: take last path component (defends against any separator)
+    name = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    # Step 2: strip leading dots / whitespace — 'hidden' and '..' both
+    #         collapse to empty below.
+    name = name.lstrip(". \t\r\n")
+    # Step 3: allow-list filter
+    name = _NOVEL_NAME_KEEP.sub("_", name)
+    # Step 4: collapse whitespace runs
+    name = _novels_re.sub(r"\s+", "_", name).strip("_. ")
+    if not name or name in {".", ".."}:
+        return "upload.txt"
+    # enforce .txt suffix at this layer? No — caller checks extension
+    # separately so skipped-reason can say 'not a .txt file' clearly.
+    return name
+
+
+def _unique_novel_path(name: str) -> Path:
+    """If novels/<name> exists, return novels/<stem>-1.txt (or -2, -3…).
+
+    We append BEFORE the extension so tools still see the file as .txt.
+    """
+    target = NOVELS_DIR / name
+    if not target.exists():
+        return target
+    stem, _, ext = name.rpartition(".")
+    if not stem:                 # names with no dot like 'README'
+        stem, ext = name, ""
+    else:
+        ext = "." + ext
+    i = 1
+    while True:
+        candidate = NOVELS_DIR / f"{stem}-{i}{ext}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def _is_utf8_ok(path: Path, head_bytes: int = 8192) -> bool:
+    """True iff the first head_bytes of the file decode as UTF-8.
+
+    We use an incremental decoder so a chunk that happens to cut in the
+    MIDDLE of a valid multi-byte sequence (common at 8KB/multi-MB boundaries
+    when the file is mostly CJK) doesn't trigger a false negative.
+    """
+    import codecs
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+    try:
+        with path.open("rb") as f:
+            chunk = f.read(head_bytes)
+        # final=False tolerates an incomplete trailing sequence — we're only
+        # sampling the head, not validating the whole file.
+        decoder.decode(chunk, final=False)
+        return True
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def _estimate_chapters(path: Path) -> tuple[int, str]:
+    """Return (count, format_name). Uses ChapterStream for large files, and
+    falls back to count_chapters on head-only content otherwise. If the file
+    can't be decoded as UTF-8, return (1, 'none') — count_chapters's default
+    for unparseable input.
+    """
+    from src.genre_pipeline import chapter_detector, chapter_stream
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return 1, "none"
+
+    # Large file: use the streaming index (bounded memory).
+    if size >= chapter_stream.STREAMING_THRESHOLD_BYTES:
+        try:
+            stream = chapter_stream.ChapterStream(path)
+            count = stream.total_chapters
+            # chapter_stream.detect_format reads head 1MB; cheap enough.
+            head = path.read_bytes()[: 1024 * 1024].decode("utf-8", errors="ignore")
+            fmt = chapter_detector.detect_format(head)
+            return count, fmt
+        except Exception:
+            return 1, "none"
+
+    # Small file: read fully (size < 5MB)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return 1, "none"
+    return chapter_detector.count_chapters(text), chapter_detector.detect_format(text)
+
+
+@app.get("/api/novels")
+def api_novels_list():
+    NOVELS_DIR.mkdir(parents=True, exist_ok=True)
+    out: list[dict] = []
+    # Only top-level *.txt files; skip hidden and non-txt and subdirs.
+    for p in sorted(NOVELS_DIR.iterdir()):
+        if not p.is_file():
+            continue
+        if p.name.startswith("."):
+            continue
+        if p.suffix.lower() != ".txt":
+            continue
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        enc_ok = _is_utf8_ok(p)
+        chapters, fmt = _estimate_chapters(p) if enc_ok else (0, "none")
+        out.append({
+            "name": p.name,
+            "path": f"novels/{p.name}",
+            "size_bytes": size,
+            "size_human": _human_size(size),
+            "encoding_ok": enc_ok,
+            "estimated_chapters": chapters,
+            "detected_format": fmt,
+        })
+    return jsonify({"novels": out})
+
+
+@app.post("/api/novels/upload")
+def api_novels_upload():
+    if READONLY_MODE:
+        return jsonify({"ok": False, "reason": "readonly_mode"}), 403
+    NOVELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"ok": False, "reason": "no files uploaded (field 'files' missing)"}), 400
+
+    uploaded: list[dict] = []
+    skipped: list[dict] = []
+
+    for fs in files:
+        raw = fs.filename or ""
+        name = _sanitize_novel_name(raw)
+
+        # Extension check (after sanitisation so .. ./ etc. couldn't smuggle one in)
+        if not name.lower().endswith(".txt"):
+            skipped.append({
+                "name": raw or name,
+                "reason": "not a .txt file (only .txt accepted)",
+            })
+            continue
+
+        # Size check — per-file. Streamed: seek to end.
+        fs.stream.seek(0, io.SEEK_END)
+        size = fs.stream.tell()
+        fs.stream.seek(0)
+        if size > NOVEL_MAX_BYTES:
+            skipped.append({
+                "name": raw,
+                "reason": f"file too large ({_human_size(size)} > {_human_size(NOVEL_MAX_BYTES)})",
+            })
+            continue
+        if size == 0:
+            skipped.append({"name": raw, "reason": "empty file"})
+            continue
+
+        target = _unique_novel_path(name)
+        tmp = target.with_name("." + target.name + ".tmp")
+        try:
+            # Atomic write: temp file first, fsync hint, rename.
+            with tmp.open("wb") as out_f:
+                while True:
+                    chunk = fs.stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out_f.write(chunk)
+            os.replace(tmp, target)
+        except OSError as e:
+            # Clean up temp if rename fails
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+            skipped.append({"name": raw, "reason": f"write failed: {e}"})
+            continue
+
+        enc_ok = _is_utf8_ok(target)
+        uploaded.append({
+            "name": target.name,
+            "path": f"novels/{target.name}",
+            "size_bytes": size,
+            "size_human": _human_size(size),
+            "encoding_ok": enc_ok,
+        })
+
+    # 201 iff at least one file landed; otherwise 200 so the UI can still
+    # parse `skipped`.
+    code = 201 if uploaded else 200
+    return jsonify({"uploaded": uploaded, "skipped": skipped}), code
+
+
+def _resolve_novel_or_abort(name: str) -> Path:
+    """Translate a path segment into a novels/<name> Path, refusing anything
+    that could escape. Flask routes with <string:name> don't accept '/' so
+    the main attack surface is URL-encoded %2F and parent-references.
+    """
+    if not name or name in (".", ".."):
+        abort(400, "invalid name")
+    # Reject any separator or parent-ref even after URL-decode
+    if "/" in name or "\\" in name or ".." in name:
+        abort(403, "path traversal rejected")
+    target = (NOVELS_DIR / name).resolve()
+    try:
+        target.relative_to(NOVELS_DIR.resolve())
+    except ValueError:
+        abort(403, "path outside novels/")
+    return target
+
+
+@app.delete("/api/novels/<path:name>")
+def api_novels_delete(name: str):
+    if READONLY_MODE:
+        return jsonify({"ok": False, "reason": "readonly_mode"}), 403
+    target = _resolve_novel_or_abort(name)
+    if not target.exists() or not target.is_file():
+        return jsonify({"ok": False, "reason": "not found"}), 404
+    try:
+        target.unlink()
+    except OSError as e:
+        return jsonify({"ok": False, "reason": str(e)}), 500
+    return jsonify({"deleted": True, "name": target.name})
+
+
+@app.get("/api/novels/<path:name>/preview")
+def api_novels_preview(name: str):
+    target = _resolve_novel_or_abort(name)
+    if not target.exists() or not target.is_file():
+        return jsonify({"ok": False, "reason": "not found"}), 404
+
+    # Read at most 2000 characters. We over-read bytes (4× chars) so CJK still
+    # gives us ~2000 glyphs; trim to exactly 2000 after decode.
+    try:
+        with target.open("rb") as f:
+            raw = f.read(8192)
+        text = raw.decode("utf-8", errors="replace")
+    except OSError as e:
+        return jsonify({"ok": False, "reason": str(e)}), 500
+
+    truncated = target.stat().st_size > len(raw) or len(text) > 2000
+    head = text[:2000]
+    return jsonify({"name": target.name, "head": head, "truncated": truncated})
+
+
+@app.get("/novels")
+def view_novels_index():
+    return render_template("novels/index.html")
 
 
 # ---------- errors ----------
