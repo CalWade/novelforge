@@ -1,23 +1,10 @@
-# Project: gangster-hk-1983-linjiayao
-# "林家耀的故事" —— 一本基于 gangster-hk-1983 题材的具体小说
-# 可以改动此文件的所有内容；但 genre 字段决定了加载哪份题材元信息。
-
 id: gangster-hk-1983-linjiayao
 display_name: 港综 · 林家耀记事
-genre: gangster-hk-1983
-
-# 本书特有的主角设定
 protagonist_name: 林家耀
 protagonist_hook: 福建新移民、父亲旧为国民党情报人员、携一枚只能查询 1983-2000 公开事件的系统抵港
-
-# 本书的章节规划
 opening_year_month: 1983-06
 chapter_count_target: 800
 chapters_in_outline: 10
-
-# 本书级的作者 persona 微调（覆盖 genre 层的默认）
-# 留空表示完全继承 genre.yaml 的 author_persona_hints
 author_persona_overrides: []
-
-# 本书级的额外风格禁止（在 genre.prohibited_styles 基础上追加）
 extra_prohibited_styles: []
+source_preset: gangster-hk-1983
