@@ -9,14 +9,86 @@
 {% endblock %}
 
 {% block content %}
-<!-- Task B will flesh out the UI. This minimal markup exists so /novels
-     returns 200 and the Task A API tests pass. -->
-<section class="genre-hero">
-  <div class="genre-hero-mark">◎</div>
-  <h1 class="genre-hero-title">素材库</h1>
-  <p class="genre-hero-sub">放小说正文 · 喂给题材流水线拆解</p>
+<link rel="stylesheet" href="{{ url_for('static', filename='novels.css') }}" />
+
+<section class="novels-hero">
+  <div class="novels-hero-mark">◎</div>
+  <div class="novels-hero-text">
+    <h1 class="novels-hero-title">素材库</h1>
+    <p class="novels-hero-sub">
+      放小说正文 · 喂给<a href="/genres">题材流水线</a>拆解。<br />
+      <em class="hero-em">只接受 UTF-8 纯文本 .txt · 单文件 ≤ 50 MB</em>
+    </p>
+  </div>
+  <div class="novels-hero-stats" id="novels-stats" hidden>
+    <div class="stat">
+      <div class="stat-n" id="stat-count">0</div>
+      <div class="stat-l">素材</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n" id="stat-size">—</div>
+      <div class="stat-l">总大小</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n" id="stat-chapters">—</div>
+      <div class="stat-l">章节合计</div>
+    </div>
+  </div>
 </section>
-<section id="novels-root"><!-- hydrated by novels.js --></section>
+
+<!-- DROPZONE -->
+<section class="novels-upload">
+  <label class="dropzone" id="dropzone" for="file-input">
+    <input id="file-input" type="file" accept=".txt,text/plain" multiple hidden />
+    <div class="dropzone-inner">
+      <div class="dropzone-icon">⇡</div>
+      <div class="dropzone-title">拖入 .txt 文件 &nbsp;或&nbsp; 点击选择</div>
+      <div class="dropzone-sub">支持多选 · 只接受 UTF-8 .txt · 单文件 ≤ 50 MB</div>
+    </div>
+  </label>
+
+  <!-- Per-file upload progress — only visible while something is in flight -->
+  <ul class="upload-queue" id="upload-queue"></ul>
+</section>
+
+<!-- LIBRARY TABLE -->
+<section class="novels-section">
+  <div class="novels-section-head">
+    <h3 class="novels-section-title">现有素材</h3>
+    <button class="btn btn-ghost btn-sm" id="btn-refresh" title="重新扫描 novels/ 目录">
+      <span class="btn-glyph">⟳</span>刷新
+    </button>
+  </div>
+  <div class="novels-table-wrap">
+    <table class="novels-table" id="novels-table">
+      <thead>
+        <tr>
+          <th class="col-name">文件名</th>
+          <th class="col-size">大小</th>
+          <th class="col-enc">编码</th>
+          <th class="col-chapters">章节</th>
+          <th class="col-format">格式</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="novels-tbody">
+        <tr class="novels-empty-row">
+          <td colspan="6"><div class="placeholder"><div class="placeholder-title">加载中…</div></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- PREVIEW DRAWER -->
+<aside class="preview-drawer" id="preview-drawer" hidden>
+  <div class="preview-head">
+    <div class="preview-title" id="preview-title">—</div>
+    <button class="preview-close" id="preview-close" aria-label="关闭">✕</button>
+  </div>
+  <div class="preview-meta" id="preview-meta"></div>
+  <pre class="preview-body" id="preview-body"></pre>
+</aside>
 {% endblock %}
 
 {% block scripts %}
