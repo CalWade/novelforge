@@ -11,8 +11,10 @@
 {% endblock %}
 
 {% block content %}
-<section class="genre-narrow" data-gid="{{ gid }}">
-  <div class="genre-panel">
+<link rel="stylesheet" href="{{ url_for('static', filename='novels.css') }}" />
+
+<section class="genre-detail" data-gid="{{ gid }}">
+  <div class="genre-panel genre-panel-wide">
     <div class="genre-panel-head">
       <h2 class="genre-panel-title">从已有小说拆解题材规范</h2>
       <p class="genre-panel-sub">
@@ -20,16 +22,55 @@
         每 25 章一批（自适应），笔记落盘，可断点续跑。<span class="hero-em">真实跑会调用 LLM，按量计费；dry_run 模式只走骨架。</span>
       </p>
     </div>
-    <form id="extract-form" class="genre-form">
-      <label class="form-field">
-        <span class="form-label">
-          小说源文件路径 <span class="form-required">*</span>
-          <span class="form-hint">一行一个；相对项目根，或绝对路径；UTF-8 纯文本</span>
-        </span>
-        <textarea id="f-sources" class="form-input form-textarea" rows="5"
-                  placeholder="novels/a.txt&#10;novels/b.txt" required></textarea>
-      </label>
 
+    <form id="extract-form" class="genre-form">
+      <!-- Mode toggle: library picker ↔ advanced textarea -->
+      <div class="mode-toggle" role="tablist" aria-label="素材来源">
+        <button type="button" class="mode-tab is-active"
+                data-mode="library" aria-selected="true">
+          <span class="mode-tab-icon">◎</span>
+          <span class="mode-tab-text">从素材库勾选</span>
+        </button>
+        <button type="button" class="mode-tab"
+                data-mode="advanced" aria-selected="false">
+          <span class="mode-tab-icon">⌨</span>
+          <span class="mode-tab-text">高级 · 手敲路径</span>
+        </button>
+      </div>
+
+      <!-- MODE A: library picker (default) -->
+      <div class="mode-pane is-active" data-pane="library">
+        <div class="library-picker" id="novels-picker">
+          <div class="library-picker-head">
+            <div class="library-picker-title" id="picker-summary">加载素材库…</div>
+            <div class="library-picker-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-select-all">全选</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-select-none">清空</button>
+              <a class="btn btn-ghost btn-sm" href="/novels" target="_blank" rel="noopener"
+                 title="在新标签打开素材库上传页">
+                <span class="btn-glyph">⇡</span>上传
+              </a>
+            </div>
+          </div>
+          <div class="library-picker-body" id="picker-body">
+            <div class="placeholder"><div class="placeholder-title">扫描中…</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODE B: advanced textarea -->
+      <div class="mode-pane" data-pane="advanced">
+        <label class="form-field">
+          <span class="form-label">
+            小说源文件路径 <span class="form-required">*</span>
+            <span class="form-hint">一行一个；相对项目根，或绝对路径；UTF-8 纯文本。<em>用于 novels/ 之外的文件</em></span>
+          </span>
+          <textarea id="f-sources" class="form-input form-textarea" rows="5"
+                    placeholder="novels/a.txt&#10;/abs/path/b.txt"></textarea>
+        </label>
+      </div>
+
+      <!-- Options: trial / dry_run -->
       <div class="form-row form-row-checks">
         <label class="form-check">
           <input type="checkbox" id="f-with-trial" />
@@ -52,8 +93,8 @@
       <div class="form-error" id="f-error" hidden></div>
       <div class="form-actions">
         <a class="btn btn-ghost" href="/genres/{{ gid }}">取消</a>
-        <button type="submit" class="btn btn-primary">
-          <span class="btn-glyph">▶</span>启动拆解
+        <button type="submit" class="btn btn-primary" id="btn-submit" disabled>
+          <span class="btn-glyph">▶</span><span id="submit-label">启动拆解</span>
         </button>
       </div>
     </form>

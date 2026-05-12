@@ -347,20 +347,70 @@
   // /genres/<id>/extract — form
   // ========================================================
   function initExtract(gid) {
+    const state = {
+      mode: 'library',   // 'library' | 'advanced'
+      selected: new Set(),
+      novels: [],
+    };
+
+    // --- mode toggle ---
+    document.querySelectorAll('.mode-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode');
+        state.mode = mode;
+        document.querySelectorAll('.mode-tab').forEach(t => {
+          const active = t.getAttribute('data-mode') === mode;
+          t.classList.toggle('is-active', active);
+          t.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('.mode-pane').forEach(p => {
+          p.classList.toggle('is-active', p.getAttribute('data-pane') === mode);
+        });
+        updateSubmitState();
+      });
+    });
+
+    // --- load library ---
+    loadNovels(state, updateSubmitState);
+
+    // select all / none
+    $('#btn-select-all').addEventListener('click', () => {
+      state.novels.forEach(n => state.selected.add(n.name));
+      renderPicker(state, updateSubmitState);
+    });
+    $('#btn-select-none').addEventListener('click', () => {
+      state.selected.clear();
+      renderPicker(state, updateSubmitState);
+    });
+
+    // textarea triggers submit-enable check too
+    $('#f-sources').addEventListener('input', updateSubmitState);
+
+    // submit
     const form = $('#extract-form');
     const err = $('#f-error');
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       err.hidden = true;
-      const sources = $('#f-sources').value
-        .split(/\r?\n/)
-        .map(s => s.trim())
-        .filter(Boolean);
-      if (!sources.length) {
-        err.textContent = '至少需要一个源文件路径。';
-        err.hidden = false;
-        return;
+
+      let sources;
+      if (state.mode === 'library') {
+        if (!state.selected.size) {
+          err.textContent = '至少勾选一个素材文件。';
+          err.hidden = false;
+          return;
+        }
+        sources = Array.from(state.selected).map(n => 'novels/' + n);
+      } else {
+        sources = $('#f-sources').value
+          .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        if (!sources.length) {
+          err.textContent = '至少需要一个源文件路径。';
+          err.hidden = false;
+          return;
+        }
       }
+
       const body = {
         sources: sources,
         with_trial: $('#f-with-trial').checked,
@@ -377,6 +427,99 @@
         err.hidden = false;
       }
     });
+
+    function updateSubmitState() {
+      const btn = $('#btn-submit');
+      const label = $('#submit-label');
+      let enabled = false;
+      let count = 0;
+      if (state.mode === 'library') {
+        count = state.selected.size;
+        enabled = count > 0;
+        label.textContent = count > 0 ? `启动拆解 · ${count} 个素材` : '启动拆解';
+      } else {
+        const raw = $('#f-sources').value
+          .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        enabled = raw.length > 0;
+        label.textContent = raw.length > 0 ? `启动拆解 · ${raw.length} 个路径` : '启动拆解';
+      }
+      btn.disabled = !enabled;
+    }
+  }
+
+  async function loadNovels(state, onChange) {
+    const body = $('#picker-body');
+    const summary = $('#picker-summary');
+    try {
+      const data = await apiCall('/api/novels');
+      state.novels = data.novels || [];
+      renderPicker(state, onChange);
+    } catch (e) {
+      body.innerHTML = '';
+      body.appendChild(el('div', { class: 'placeholder' }, [
+        el('div', { class: 'placeholder-title', text: '加载失败' }),
+        el('div', { class: 'placeholder-sub', text: e.message }),
+      ]));
+      summary.textContent = '—';
+    }
+  }
+
+  function renderPicker(state, onChange) {
+    const body = $('#picker-body');
+    const summary = $('#picker-summary');
+    body.innerHTML = '';
+
+    if (!state.novels.length) {
+      summary.textContent = '素材库为空';
+      body.appendChild(el('div', { class: 'placeholder' }, [
+        el('div', { class: 'placeholder-title', text: '素材库为空' }),
+        el('div', { class: 'placeholder-sub', html:
+          '请先去 <a href="/novels" target="_blank" rel="noopener">素材库</a> 上传小说文件。' }),
+      ]));
+      onChange();
+      return;
+    }
+
+    summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
+
+    state.novels.forEach(n => {
+      const checked = state.selected.has(n.name);
+      const row = el('label', {
+        class: 'novel-pick' + (checked ? ' is-checked' : '') +
+               (n.encoding_ok ? '' : ' is-bad'),
+      }, [
+        el('input', {
+          type: 'checkbox',
+          class: 'novel-checkbox',
+          'data-name': n.name,
+          checked: checked ? 'checked' : null,
+          onchange: (e) => {
+            if (e.target.checked) state.selected.add(n.name);
+            else state.selected.delete(n.name);
+            row.classList.toggle('is-checked', e.target.checked);
+            summary.textContent = `${state.novels.length} 个素材 · 已选 ${state.selected.size}`;
+            onChange();
+          },
+        }),
+        el('span', { class: 'novel-pick-box' }),
+        el('div', { class: 'novel-pick-main' }, [
+          el('div', { class: 'novel-pick-name', text: n.name }),
+          el('div', { class: 'novel-pick-meta' }, [
+            el('span', { text: n.size_human }),
+            el('span', { class: 'sep', text: '·' }),
+            el('span', { text: (n.estimated_chapters || 0).toLocaleString() + ' 章' }),
+            el('span', { class: 'sep', text: '·' }),
+            el('span', { class: 'fmt-chip' + (n.detected_format === 'none' ? ' fmt-none' : ''),
+                         text: n.detected_format || '—' }),
+            n.encoding_ok ? null :
+              el('span', { class: 'novel-pick-warn', title: 'UTF-8 解码失败',
+                           text: '⚠ 编码异常' }),
+          ]),
+        ]),
+      ]);
+      body.appendChild(row);
+    });
+    onChange();
   }
 
   // ========================================================

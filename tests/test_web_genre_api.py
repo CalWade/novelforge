@@ -342,6 +342,20 @@ def test_genre_extract_form_page(client):
     assert resp.status_code == 200
 
 
+def test_extract_page_has_library_picker_and_advanced_textarea(client):
+    """Task C: default mode is checkbox-from-library; advanced textarea
+    exists for power users who want paths outside novels/."""
+    resp = client.get("/genres/gangster-hk-1983/extract")
+    html = resp.get_data(as_text=True)
+    # Library picker (new default mode)
+    assert "novels-picker" in html or "novel-checkbox" in html, \
+        "extract page should render the novels/ library picker"
+    # Advanced/manual textarea still exists
+    assert "f-sources" in html, "manual path textarea should still be accessible"
+    # Mode toggle UI
+    assert "advanced" in html.lower() or "手敲" in html or "高级" in html
+
+
 def test_genre_extract_progress_page(client):
     resp = client.get("/genres/gangster-hk-1983/extract/progress")
     assert resp.status_code == 200
