@@ -188,7 +188,7 @@ def build_genre_from_answers(answers: dict) -> dict:
     gid = _require(answers, "id")
     display_name = _require(answers, "display_name")
 
-    genre_dir = config.GENRES_DIR / gid
+    genre_dir = config.PRESETS_DIR / gid
     if genre_dir.exists():
         raise FileExistsError(f"Genre already exists: {genre_dir}")
     genre_dir.mkdir(parents=True)

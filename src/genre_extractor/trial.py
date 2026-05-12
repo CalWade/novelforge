@@ -51,7 +51,7 @@ def run_trial(
     Parameters
     ----------
     genre_id
-        The candidate genre id (must exist under `config.GENRES_DIR`).
+        The candidate genre id (must exist under `config.PRESETS_DIR`).
     bb
         Genre-pipeline blackboard (rooted at `genres/<id>/.build/`). We
         append the trial's summary to its `genre_issues.jsonl`.
@@ -68,7 +68,7 @@ def run_trial(
       - severity="warning" if bootstrap itself fails
     """
     # 1. Validate genre up front so bad inputs fail fast.
-    genre_dir = config.GENRES_DIR / genre_id
+    genre_dir = config.PRESETS_DIR / genre_id
     if not genre_dir.exists():
         raise FileNotFoundError(
             f"Genre not found: {genre_dir}. Known: "
@@ -98,7 +98,7 @@ def run_trial(
         trial_dir.mkdir()
         _write_trial_project_files(trial_dir, genre_id, genre_dir)
 
-        # 4. Point config at the tmp projects dir (but keep GENRES_DIR as-is
+        # 4. Point config at the tmp projects dir (but keep PRESETS_DIR as-is
         #    — the trial validates THE EXISTING genre, in place).
         config.PROJECTS_DIR = tmp_projects
         config.ACTIVE_POINTER = tmp_projects / ".active"

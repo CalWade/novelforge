@@ -139,7 +139,7 @@ class GenreValidator(BaseAgent):
         """
         from src import config
 
-        genre_dir = config.GENRES_DIR / genre_id
+        genre_dir = config.PRESETS_DIR / genre_id
         files_to_scan = (
             "era.md",
             "writing-style-extra.md",

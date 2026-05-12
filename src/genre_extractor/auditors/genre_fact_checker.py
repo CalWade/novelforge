@@ -71,7 +71,7 @@ class GenreFactChecker(BaseAgent):
     def _build_prompts(self, bb: Blackboard, *, genre_id: str, **_):
         from src import config
 
-        genre_dir = config.GENRES_DIR / genre_id
+        genre_dir = config.PRESETS_DIR / genre_id
         era_path = genre_dir / "era.md"
         inputs_read: list[str] = []
         if era_path.exists():

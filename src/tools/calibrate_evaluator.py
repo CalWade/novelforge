@@ -82,9 +82,9 @@ def setup_scratch_state(setting_name: str, chapter_md: str) -> Path:
     (scratch_state / "summaries").mkdir()
     (scratch_state / "fixes").mkdir()
 
-    genre_dir = config.GENRES_DIR / setting_name
+    genre_dir = config.PRESETS_DIR / setting_name
     if not genre_dir.exists():
-        raise FileNotFoundError(f"Unknown genre: {setting_name} (looked in {config.GENRES_DIR})")
+        raise FileNotFoundError(f"Unknown genre: {setting_name} (looked in {config.PRESETS_DIR})")
 
     # Copy genre-layer files
     for f in ["era.md", "writing-style-extra.md", "iron-laws-extra.md"]:

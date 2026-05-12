@@ -70,7 +70,7 @@ class GenreFixer(BaseAgent):
     ):
         from src import config
 
-        genre_dir = config.GENRES_DIR / genre_id
+        genre_dir = config.PRESETS_DIR / genre_id
         current = (genre_dir / file_name).read_text(encoding="utf-8")
 
         # Render issues with any 'quote' / 'suggestion' fields if present.
@@ -119,6 +119,6 @@ class GenreFixer(BaseAgent):
                 text = text[: -len("```")]
             text = text.strip()
 
-        (config.GENRES_DIR / genre_id / file_name).write_text(
+        (config.PRESETS_DIR / genre_id / file_name).write_text(
             text + "\n", encoding="utf-8"
         )

@@ -48,7 +48,6 @@ PERPLEXITY_MODEL: str = os.environ.get("PERPLEXITY_MODEL", "perplexity/sonar-pro
 # Paths (all relative to project root)
 PROJECT_ROOT: Path = _PROJECT_ROOT
 PRESETS_DIR: Path = _PROJECT_ROOT / "presets"
-GENRES_DIR: Path = PRESETS_DIR  # Deprecated alias, removed in Task 2.8 of phase 2
 PROJECTS_DIR: Path = _PROJECT_ROOT / "projects"
 ACTIVE_POINTER: Path = PROJECTS_DIR / ".active"
 

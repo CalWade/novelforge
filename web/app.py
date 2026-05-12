@@ -32,7 +32,7 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 # single flat layout — no subdirs, no symlinks, no hidden files.
 #
 # NOVELS_DIR is a module attribute (not a function) so tests can monkeypatch
-# it to tmp_path, matching the pattern we use for GENRES_DIR.
+# it to tmp_path, matching the pattern we use for PRESETS_DIR.
 NOVELS_DIR: Path = config.PROJECT_ROOT / "novels"
 # Max bytes per uploaded file. The overall Flask MAX_CONTENT_LENGTH is set
 # higher (so multi-file uploads work) and per-file enforcement happens in
@@ -136,7 +136,7 @@ def api_genres():
     import yaml
     out = []
     for gid in bootstrap.list_genres():
-        gdir = config.GENRES_DIR / gid
+        gdir = config.PRESETS_DIR / gid
         try:
             gyaml = yaml.safe_load(
                 (gdir / "genre.yaml").read_text(encoding="utf-8")
@@ -745,7 +745,7 @@ _genre_task: dict = {"running": False}
 def _genre_dir(genre_id: str) -> Path:
     from src import bootstrap as _bs
     _bs._validate_id("genre", genre_id)  # reject path-traversal / malformed
-    return config.GENRES_DIR / genre_id
+    return config.PRESETS_DIR / genre_id
 
 
 @app.post("/api/genres/new")
