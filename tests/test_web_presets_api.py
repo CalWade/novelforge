@@ -82,3 +82,62 @@ def test_old_genres_routes_gone(app_with_presets):
     for path in ("/genres", "/genres/new", "/genres/gangster-hk-1983", "/api/genres"):
         r = app_with_presets.get(path)
         assert r.status_code == 404, f"old route {path} still serves"
+
+
+def test_post_new_preset_from_novel_requires_sources(app_with_presets):
+    r = app_with_presets.post("/api/presets/new-from-novel", json={"id": "newp"})
+    assert r.status_code == 400
+    reason = (r.get_json() or {}).get("reason", "").lower()
+    assert "source" in reason
+
+
+def test_post_new_preset_from_novel_rejects_existing(app_with_presets):
+    r = app_with_presets.post("/api/presets/new-from-novel", json={
+        "id": "gangster-hk-1983",
+        "sources": ["foo.txt"],
+    })
+    assert r.status_code == 409
+
+
+def test_post_new_preset_from_novel_requires_id(app_with_presets):
+    r = app_with_presets.post("/api/presets/new-from-novel", json={
+        "sources": ["a.txt"],
+    })
+    assert r.status_code == 400
+
+
+def test_post_new_preset_from_novel_schedules_job(app_with_presets, monkeypatch):
+    from src import config
+    # Seed a source file in the pool
+    (config.PROJECT_ROOT / "novels" / "src1.txt").write_text("x", encoding="utf-8")
+
+    captured = {}
+    def fake_extract(preset_id, *, sources, with_trial):
+        captured.update(preset_id=preset_id, sources=list(sources))
+        return {"preset_id": preset_id}
+    monkeypatch.setattr("src.genre_extractor.to_preset.extract_to_preset", fake_extract)
+
+    r = app_with_presets.post("/api/presets/new-from-novel", json={
+        "id": "new-preset",
+        "sources": ["src1.txt"],
+    })
+    assert r.status_code == 202
+    data = r.get_json()
+    assert data.get("preset_id") == "new-preset"
+
+    # Wait for background job
+    import time
+    s: dict = {}
+    for _ in range(40):
+        s = app_with_presets.get("/api/presets/new-preset/status").get_json()
+        if s.get("state") in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert captured.get("preset_id") == "new-preset"
+    assert s["state"] == "done"
+
+
+def test_preset_status_unknown_for_unseen_preset(app_with_presets):
+    r = app_with_presets.get("/api/presets/never-seen/status")
+    assert r.status_code == 200
+    assert r.get_json().get("state") == "unknown"

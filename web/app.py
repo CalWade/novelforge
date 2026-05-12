@@ -205,6 +205,75 @@ def api_preset_delete(pid: str):
     return jsonify({"ok": True, "id": pid})
 
 
+# ---- preset extraction jobs ----
+# Maps preset_id → {"state": "running|done|failed", "error": str|None}.
+# In-memory is fine: a crash mid-extraction should re-run fresh anyway,
+# and the preset filesystem is the real source of truth for "was it built".
+_PRESET_JOBS: dict[str, dict] = {}
+_PRESET_JOB_LOCK = threading.Lock()
+
+
+@app.post("/api/presets/new-from-novel")
+def api_preset_new_from_novel():
+    """Kick off a genre-extraction job in a background thread.
+
+    Validation happens synchronously (id, sources, no existing preset, no
+    running job for this id). Once accepted, extract_to_preset runs in a
+    daemon thread; the caller polls /api/presets/<pid>/status.
+    """
+    if READONLY_MODE:
+        return jsonify({"ok": False, "reason": "readonly_mode"}), 403
+    body = request.get_json(silent=True) or {}
+    pid = (body.get("id") or "").strip()
+    sources = body.get("sources") or []
+    if not pid:
+        return jsonify({"ok": False, "reason": "id required"}), 400
+    if not sources:
+        return jsonify({"ok": False, "reason": "sources required"}), 400
+    if _preset_dir(pid).exists():
+        return jsonify({"ok": False, "reason": "preset already exists"}), 409
+
+    with _PRESET_JOB_LOCK:
+        existing = _PRESET_JOBS.get(pid)
+        if existing is not None and existing.get("state") == "running":
+            return jsonify({"ok": False, "reason": "job already running"}), 409
+        _PRESET_JOBS[pid] = {"state": "running", "error": None}
+
+    with_trial = bool(body.get("with_trial", False))
+
+    def _worker():
+        try:
+            # Import lazily so test monkeypatch on the module attribute
+            # takes effect — we resolve the function fresh each call.
+            from src.genre_extractor import to_preset
+            to_preset.extract_to_preset(
+                pid,
+                sources=sources,
+                with_trial=with_trial,
+            )
+            with _PRESET_JOB_LOCK:
+                _PRESET_JOBS[pid] = {"state": "done", "error": None}
+        except Exception as e:
+            with _PRESET_JOB_LOCK:
+                _PRESET_JOBS[pid] = {"state": "failed", "error": str(e)}
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"ok": True, "preset_id": pid, "state": "running"}), 202
+
+
+@app.get("/api/presets/<pid>/status")
+def api_preset_status(pid: str):
+    """Poll the background extraction job. Unknown pid → state='unknown'.
+
+    Returns 200 in all cases so the UI has a stable polling contract.
+    """
+    with _PRESET_JOB_LOCK:
+        job = _PRESET_JOBS.get(pid)
+    if job is None:
+        return jsonify({"state": "unknown", "preset_id": pid})
+    return jsonify({**job, "preset_id": pid})
+
+
 @app.get("/presets")
 def view_presets_index():
     return render_template("presets/index.html")
