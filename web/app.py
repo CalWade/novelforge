@@ -336,27 +336,137 @@ def api_project_activate():
         _run_lock.release()
 
 
+# Track per-book extract-genre jobs (4-step wizard async path + Task 4.4).
+# Same in-memory pattern as _PRESET_JOBS: filesystem is the real source of
+# truth for "did it finish", this dict is just for live UI polling.
+_PROJECT_JOBS: dict[str, dict] = {}
+_PROJECT_JOB_LOCK = threading.Lock()
+
+
 @app.post("/api/projects/new")
 def api_project_new():
+    """4-step wizard: name → genre → outline → characters.
+
+    Required fields:
+      id, display_name, protagonist_name, chapter_count_target
+
+    Genre source (exactly one must be indicated):
+      from_preset=<id>  |  blank_genre=True  |  from_extract={sources, with_trial}
+
+    Outline source (exactly one):
+      outline_synopsis=<str> (LLM drafts)  |  blank_outline=True
+
+    Characters source (exactly one):
+      characters_brief=<str> (LLM drafts)  |  blank_characters=True
+
+    When from_extract is provided, skeleton project is created synchronously
+    and the genre extraction runs in a background thread (returns 202).
+    Otherwise synchronous create_project + bootstrap_project (returns 200).
+    """
     if READONLY_MODE:
         return jsonify({"ok": False, "reason": "readonly_mode"}), 403
-    data = request.get_json(silent=True) or {}
-    pid = (data.get("id") or "").strip()
-    genre = (data.get("genre") or "").strip()
-    overwrite = bool(data.get("overwrite", False))
-    if not pid or not genre:
-        return jsonify({"ok": False, "reason": "id and genre required"}), 400
-    from src import bootstrap
+    body = request.get_json(silent=True) or {}
+
+    # Validate required scalar fields up-front — create_project's own checks
+    # would raise ValueError too, but doing it here gives crisper messages
+    # and avoids creating an aborted on-disk skeleton for trivial mistakes.
+    required = ("id", "display_name", "protagonist_name", "chapter_count_target")
+    for f in required:
+        if body.get(f) is None or body.get(f) == "":
+            return jsonify({"ok": False, "reason": f"{f} required"}), 400
+
+    pid = body["id"]
+    from_extract = body.get("from_extract")
+
+    # Async path: from_extract with non-empty sources.
+    # Strategy: create the project skeleton with blank genre stubs right
+    # now (so the project appears in /api/projects immediately), then kick
+    # off genre extraction in a background thread. The extractor
+    # (to_project.extract_to_project) overwrites the blank stubs in place.
+    if from_extract and from_extract.get("sources"):
+        try:
+            from src.bootstrap import create_project
+            create_project(
+                pid,
+                display_name=body["display_name"],
+                protagonist_name=body["protagonist_name"],
+                chapter_count_target=int(body["chapter_count_target"]),
+                blank_genre=True,
+                blank_outline=bool(body.get("blank_outline", False)),
+                outline_synopsis=body.get("outline_synopsis"),
+                blank_characters=bool(body.get("blank_characters", False)),
+                characters_brief=body.get("characters_brief"),
+            )
+        except FileExistsError as e:
+            return jsonify({"ok": False, "reason": str(e)}), 409
+        except ValueError as e:
+            return jsonify({"ok": False, "reason": str(e)}), 400
+        except FileNotFoundError as e:
+            return jsonify({"ok": False, "reason": str(e)}), 404
+
+        with _PROJECT_JOB_LOCK:
+            _PROJECT_JOBS[pid] = {"state": "running", "error": None}
+
+        sources = list(from_extract["sources"])
+        with_trial = bool(from_extract.get("with_trial", False))
+
+        def _worker():
+            try:
+                # Import lazily so tests can monkeypatch the module attr.
+                from src.genre_extractor import to_project as to_proj
+                to_proj.extract_to_project(pid, sources=sources, with_trial=with_trial)
+                with _PROJECT_JOB_LOCK:
+                    _PROJECT_JOBS[pid] = {"state": "done", "error": None}
+            except Exception as e:
+                with _PROJECT_JOB_LOCK:
+                    _PROJECT_JOBS[pid] = {"state": "failed", "error": str(e)}
+
+        try:
+            threading.Thread(target=_worker, daemon=True).start()
+        except BaseException:
+            with _PROJECT_JOB_LOCK:
+                _PROJECT_JOBS[pid] = {"state": "failed", "error": "thread spawn failed"}
+            raise
+        return jsonify({"ok": True, "project_id": pid, "state": "extracting"}), 202
+
+    # Sync path: create skeleton + bootstrap into state/.
     try:
-        project_dir = bootstrap.create_project(pid, genre, overwrite=overwrite)
+        from src.bootstrap import bootstrap_project, create_project
+        create_project(
+            pid,
+            display_name=body["display_name"],
+            protagonist_name=body["protagonist_name"],
+            chapter_count_target=int(body["chapter_count_target"]),
+            from_preset=body.get("from_preset"),
+            blank_genre=bool(body.get("blank_genre", False)),
+            outline_synopsis=body.get("outline_synopsis"),
+            blank_outline=bool(body.get("blank_outline", False)),
+            characters_brief=body.get("characters_brief"),
+            blank_characters=bool(body.get("blank_characters", False)),
+            overwrite=bool(body.get("overwrite", False)),
+        )
+        bootstrap_project(pid)
     except ValueError as e:
-        # invalid id/genre (e.g. path-traversal attempt) — hard reject
         return jsonify({"ok": False, "reason": str(e)}), 400
     except FileNotFoundError as e:
-        return jsonify({"ok": False, "reason": str(e)}), 400
+        return jsonify({"ok": False, "reason": str(e)}), 404
     except FileExistsError as e:
         return jsonify({"ok": False, "reason": str(e)}), 409
-    return jsonify({"ok": True, "project_dir": str(project_dir), "id": pid})
+    return jsonify({"ok": True, "project_id": pid})
+
+
+@app.get("/api/projects/<pid>/extract-genre/progress")
+def api_project_extract_progress(pid: str):
+    """Poll the per-project extract-genre job. Unknown pid → state='unknown'.
+
+    Stable 200 in all cases so the UI has a consistent polling contract
+    (same shape as /api/presets/<pid>/status).
+    """
+    with _PROJECT_JOB_LOCK:
+        job = _PROJECT_JOBS.get(pid)
+    if job is None:
+        return jsonify({"state": "unknown", "project_id": pid})
+    return jsonify({**job, "project_id": pid})
 
 
 # ---------- project file editing ----------
