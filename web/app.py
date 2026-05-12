@@ -1360,6 +1360,22 @@ def _estimate_chapters(path: Path) -> tuple[int, str]:
     return chapter_detector.count_chapters(text), chapter_detector.detect_format(text)
 
 
+def _novel_used_by_presets(name: str) -> list[str]:
+    """Return preset ids whose `novels/<name>` file exists (sorted).
+
+    Presets referencing a novel by symlink or by copy under their own
+    `novels/` dir both count — the UI just needs to warn the user that
+    deleting this file will break the referenced preset's extraction run.
+    """
+    used: list[str] = []
+    if not config.PRESETS_DIR.exists():
+        return used
+    for p in sorted(config.PRESETS_DIR.iterdir()):
+        if p.is_dir() and (p / "novels" / name).exists():
+            used.append(p.name)
+    return used
+
+
 @app.get("/api/novels")
 def api_novels_list():
     NOVELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1386,6 +1402,7 @@ def api_novels_list():
             "encoding_ok": enc_ok,
             "estimated_chapters": chapters,
             "detected_format": fmt,
+            "used_by_presets": _novel_used_by_presets(p.name),
         })
     return jsonify({"novels": out})
 
@@ -1504,11 +1521,22 @@ def api_novels_delete(name: str):
     target = _resolve_novel_or_abort(name)
     if not target.exists() or not target.is_file():
         return jsonify({"ok": False, "reason": "not found"}), 404
+
+    force = request.args.get("force") == "true"
+    used_by = _novel_used_by_presets(target.name)
+    if used_by and not force:
+        return jsonify({
+            "ok": False,
+            "reason": "novel is used by presets; pass ?force=true",
+            "used_by_presets": used_by,
+            "name": target.name,
+        }), 409
+
     try:
         target.unlink()
     except OSError as e:
         return jsonify({"ok": False, "reason": str(e)}), 500
-    return jsonify({"deleted": True, "name": target.name})
+    return jsonify({"ok": True, "deleted": True, "name": target.name, "used_by_presets": used_by})
 
 
 @app.get("/api/novels/<path:name>/preview")
