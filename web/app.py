@@ -754,7 +754,7 @@ def api_env_post():
 # ---------- views ----------
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", active_project_id=config.get_active_project_id())
 
 
 @app.get("/api/state")

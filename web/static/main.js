@@ -999,7 +999,15 @@ function renderProjectGrid(root, projects, activeId, { onActivate, onNew }) {
 }
 
 // =========================================================
-//  NEW PROJECT WIZARD (3 steps)
+//  NEW PROJECT WIZARD (4 steps, Phase 4 Task 4.7)
+//    1) basics (id / display_name / protagonist_name / chapter_count_target)
+//    2) genre starter (preset / extract / blank)
+//    3) outline starter (synopsis / blank)
+//    4) characters starter (brief / blank)
+//
+//  Submits to POST /api/projects/new.
+//  If from_extract path → backend responds 202 with project_id; we poll
+//  /api/projects/<pid>/extract-genre/progress until done, then reload.
 // =========================================================
 
 async function openNewProjectWizard() {
@@ -1008,367 +1016,396 @@ async function openNewProjectWizard() {
   if (picker && picker.open) picker.close();
 
   const dlg = $('#dlg-new-project');
-  // reset wizard state
-  setWizardStep('basics');
-  $('#np-id').value = '';
-  $('#np-basics-error').hidden = true;
-  $('#np-create-error').hidden = true;
+  if (!dlg) return;
 
-  // load genre options
-  const sel = $('#np-genre');
-  sel.innerHTML = '<option value="" disabled selected>加载中…</option>';
-  try {
-    const { genres } = await apiCall('/api/genres');
-    sel.innerHTML = '<option value="" disabled selected>选择题材…</option>';
-    genres.forEach((g) => {
-      const label = `${g.display_name || g.id}${g.era ? ' · ' + g.era : ''}`;
-      sel.appendChild(el('option', { value: g.id }, label));
-    });
-  } catch (e) {
-    sel.innerHTML = `<option value="" disabled selected>加载失败: ${e.message}</option>`;
-  }
-
-  dlg.showModal();
-  // wire the basics form submit (idempotent: always overwrite)
-  $('#np-basics-form').onsubmit = (e) => {
-    e.preventDefault();
-    onWizardBasicsSubmit();
-  };
-}
-
-function setWizardStep(step) {
-  $$('.wizard-step').forEach((n) =>
-    n.classList.toggle('is-active', n.dataset.step === step));
-  $$('.wizard-pane').forEach((n) =>
-    n.classList.toggle('is-active', n.dataset.pane === step));
-}
-
-async function onWizardBasicsSubmit() {
-  const id = $('#np-id').value.trim();
-  const genre = $('#np-genre').value;
-  const errEl = $('#np-basics-error');
-  errEl.hidden = true;
-  if (!/^[a-z0-9_][a-z0-9_-]{0,63}$/.test(id)) {
-    errEl.textContent = 'ID 必须是小写字母/数字/_/-，长度 ≤ 64';
-    errEl.hidden = false;
-    return;
-  }
-  if (!genre) {
-    errEl.textContent = '请选择题材';
-    errEl.hidden = false;
-    return;
-  }
-  setWizardStep('create');
-  await runWizardCreate(id, genre);
-}
-
-async function runWizardCreate(id, genre) {
+  // Reset form + step state
+  const form = $('#project-wizard-form');
+  if (form) form.reset();
+  wizardGoToStep(1);
+  $$('[data-wizard-error]').forEach((n) => { n.hidden = true; n.textContent = ''; });
   const statusEl = $('#np-create-status');
-  const textEl = statusEl.querySelector('.wizard-status-text');
-  const markEl = statusEl.querySelector('.wizard-status-mark');
-  const errEl = $('#np-create-error');
-  const contBtn = $('#np-continue-edit');
-  const skipBtn = $('#np-skip-edit');
-  statusEl.classList.remove('is-done', 'is-error');
-  errEl.hidden = true;
-  contBtn.hidden = true;
-  skipBtn.hidden = true;
-  markEl.textContent = '◐';
-  textEl.textContent = '正在创建作品…';
+  if (statusEl) statusEl.hidden = true;
 
-  try {
-    await apiCall('/api/projects/new', {
-      method: 'POST',
-      body: JSON.stringify({ id, genre }),
-    });
-    textEl.textContent = '正在激活作品（写入 state/）…';
-    await apiCall('/api/projects/activate', {
-      method: 'POST',
-      body: JSON.stringify({ id }),
-    });
-    statusEl.classList.add('is-done');
-    markEl.textContent = '✓';
-    textEl.textContent = `已创建并激活 · ${id}`;
-    contBtn.hidden = false;
-    skipBtn.hidden = false;
+  // (Re-)wire step navigation, starter radios, and submit (idempotent).
+  initProjectWizard();
 
-    contBtn.onclick = () => {
-      setWizardStep('edit');
-      // wire the wizard-scoped source editor
-      initSourceEditor('[data-scope="wizard"]');
-    };
-    skipBtn.onclick = () => {
-      $('#dlg-new-project').close();
-      toast('已创建 · 稍后可在项目切换器中编辑源文件');
-      setTimeout(() => location.reload(), 300);
-    };
-    // Trigger a background state refresh so the header updates
-    pollState();
-  } catch (e) {
-    statusEl.classList.add('is-error');
-    markEl.textContent = '✕';
-    textEl.textContent = '创建失败';
-    errEl.textContent = e.message;
-    errEl.hidden = false;
-  }
-}
-
-// =========================================================
-//  SOURCE FILE EDITOR (reusable; scoped to a selector)
-//  Used in two places:
-//    - standalone dialog  (data-scope="standalone")
-//    - wizard step 3      (data-scope="wizard")
-// =========================================================
-
-function openSourceEditor() {
-  const dlg = $('#dlg-sources');
-  const pid = (state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project) || '—';
-  $('#src-active-project').textContent = pid;
-  initSourceEditor('[data-scope="standalone"]');
   dlg.showModal();
 }
 
-function initSourceEditor(scopeSel) {
-  const scope = document.querySelector(`.src-editor${scopeSel}`);
-  if (!scope) return;
-  const tabs = scope.querySelectorAll('.src-tab');
-  const area = scope.querySelector('[data-src-area]');
-  const err = scope.querySelector('[data-src-error]');
-  const saveBtn = scope.querySelector('[data-src-save]');
+function wizardGoToStep(n) {
+  const dlg = $('#dlg-new-project');
+  if (!dlg) return;
+  dlg.querySelectorAll('[data-wizard-step]').forEach((s) => {
+    s.hidden = Number(s.dataset.wizardStep) !== Number(n);
+  });
+}
 
-  // Initial state: activate first tab + load
-  tabs.forEach((t) => t.classList.remove('is-active'));
-  tabs[0].classList.add('is-active');
-  loadSourceFile(scope, tabs[0].dataset.src);
+function initProjectWizard() {
+  const dlg = $('#dlg-new-project');
+  if (!dlg) return;
+  const form = $('#project-wizard-form');
+  if (!form) return;
 
-  tabs.forEach((t) => {
-    t.onclick = () => {
-      tabs.forEach((x) => x.classList.toggle('is-active', x === t));
-      loadSourceFile(scope, t.dataset.src);
+  // Step navigation buttons (prev / next)
+  dlg.querySelectorAll('[data-wizard-next]').forEach((btn) => {
+    btn.onclick = () => {
+      const from = Number(btn.closest('[data-wizard-step]')?.dataset.wizardStep || '1');
+      if (!wizardValidateStep(from)) return;
+      wizardGoToStep(btn.dataset.wizardNext);
     };
   });
+  dlg.querySelectorAll('[data-wizard-prev]').forEach((btn) => {
+    btn.onclick = () => wizardGoToStep(btn.dataset.wizardPrev);
+  });
 
-  saveBtn.onclick = async () => {
-    const active = scope.querySelector('.src-tab.is-active');
-    if (!active) return;
-    const name = active.dataset.src;
-    err.hidden = true;
-    saveBtn.disabled = true;
-    saveBtn.textContent = '保存中…';
-    try {
-      await apiCall('/api/project-files', {
-        method: 'PUT',
-        body: JSON.stringify({ name, content: area.value }),
+  // Genre starter radios → show/hide panels
+  dlg.querySelectorAll('input[name="genre_starter"]').forEach((r) => {
+    r.onchange = wizardUpdateGenrePanels;
+  });
+  wizardUpdateGenrePanels();
+
+  // Load preset dropdown
+  const presetSel = $('#select-from-preset');
+  if (presetSel) {
+    presetSel.innerHTML = '<option value="" disabled selected>加载中…</option>';
+    fetch('/api/presets')
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then((data) => {
+        const list = data.presets || [];
+        if (!list.length) {
+          presetSel.innerHTML = '<option value="" disabled selected>（尚无 preset）</option>';
+          return;
+        }
+        presetSel.innerHTML = '';
+        list.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.display_name || p.id;
+          presetSel.appendChild(opt);
+        });
+      })
+      .catch((e) => {
+        presetSel.innerHTML = `<option value="" disabled selected>加载失败: ${e.message}</option>`;
       });
-      toast(`已保存 · ${name} · state 已重新同步`);
-      pollState();
-    } catch (e) {
-      err.textContent = '保存失败: ' + e.message;
-      err.hidden = false;
-    } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = scope.dataset.scope === 'wizard' ? '保存当前页' : '保存';
-    }
-  };
-}
-
-async function loadSourceFile(scope, name) {
-  const area = scope.querySelector('[data-src-area]');
-  const err = scope.querySelector('[data-src-error]');
-  err.hidden = true;
-  area.value = '加载中…';
-  area.disabled = true;
-  try {
-    const body = await apiCall('/api/project-files?name=' + encodeURIComponent(name));
-    area.value = body.content || '';
-  } catch (e) {
-    area.value = '';
-    err.textContent = `无法加载 ${name}: ${e.message}`;
-    err.hidden = false;
-  } finally {
-    area.disabled = false;
-  }
-}
-
-// =========================================================
-//  SETTINGS (.env editor)
-// =========================================================
-
-async function openSettingsDialog() {
-  const dlg = $('#dlg-settings');
-  const errEl = $('#st-error');
-  errEl.hidden = true;
-  // Reset password fields every open (blank = keep current)
-  $('#st-deepseek-key').value = '';
-  $('#st-perplexity-key').value = '';
-
-  // Load current env into the form
-  try {
-    const env = await apiCall('/api/env');
-    setHint('st-deepseek-key',  env.DEEPSEEK_API_KEY);
-    setHint('st-perplexity-key', env.PERPLEXITY_API_KEY);
-    $('#st-deepseek-base').value  = (env.DEEPSEEK_BASE_URL  && env.DEEPSEEK_BASE_URL.value)  || '';
-    $('#st-deepseek-model').value = (env.DEEPSEEK_MODEL     && env.DEEPSEEK_MODEL.value)     || '';
-    $('#st-perplexity-base').value  = (env.PERPLEXITY_BASE_URL  && env.PERPLEXITY_BASE_URL.value)  || '';
-    $('#st-perplexity-model').value = (env.PERPLEXITY_MODEL     && env.PERPLEXITY_MODEL.value)     || '';
-  } catch (e) {
-    errEl.textContent = '加载 .env 失败: ' + e.message;
-    errEl.hidden = false;
   }
 
-  // Wire the submit handler (reset each open to avoid stacking)
-  $('#settings-form').onsubmit = (e) => {
+  // Load novels pool for "extract" starter
+  const pool = $('#novels-pool-checkboxes');
+  if (pool) {
+    pool.innerHTML = '<span class="form-hint">加载中…</span>';
+    fetch('/api/novels')
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then((data) => {
+        renderNovelsCheckboxes(pool, data.novels || [], 'extract_source');
+      })
+      .catch((e) => {
+        pool.innerHTML = `<span class="form-error">加载失败: ${e.message}</span>`;
+      });
+  }
+
+  // Submit handler
+  form.onsubmit = (e) => {
     e.preventDefault();
-    saveSettings();
+    wizardSubmit();
   };
-
-  dlg.showModal();
 }
 
-function setHint(fieldId, meta) {
-  const hint = document.querySelector(`[data-hint-for="${fieldId}"]`);
-  if (!hint) return;
-  if (!meta) { hint.textContent = ''; return; }
-  if (meta.set) {
-    hint.textContent = `当前已设置 · ${meta.preview || ''} （留空则保留）`;
-  } else {
-    hint.textContent = '尚未设置';
+function wizardUpdateGenrePanels() {
+  const dlg = $('#dlg-new-project');
+  if (!dlg) return;
+  const val = dlg.querySelector('input[name="genre_starter"]:checked')?.value;
+  dlg.querySelectorAll('[data-genre-panel]').forEach((p) => {
+    p.hidden = p.dataset.genrePanel !== val;
+  });
+}
+
+function wizardValidateStep(step) {
+  const dlg = $('#dlg-new-project');
+  if (!dlg) return true;
+  const fd = new FormData($('#project-wizard-form'));
+  const errEl = dlg.querySelector(`[data-wizard-error="${step}"]`);
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+
+  if (step === 1) {
+    const id = (fd.get('id') || '').toString().trim();
+    if (!/^[a-z0-9_][a-z0-9_-]{0,63}$/.test(id)) {
+      showErr('ID 必须是小写字母/数字/_/-，长度 ≤ 64');
+      return false;
+    }
+    if (!(fd.get('display_name') || '').toString().trim()) {
+      showErr('显示名必填');
+      return false;
+    }
+    if (!(fd.get('protagonist_name') || '').toString().trim()) {
+      showErr('主角姓名必填');
+      return false;
+    }
+    const n = Number(fd.get('chapter_count_target'));
+    if (!Number.isInteger(n) || n < 1) {
+      showErr('目标章数必须是 ≥1 的整数');
+      return false;
+    }
   }
+  if (step === 2) {
+    const starter = fd.get('genre_starter');
+    if (starter === 'preset' && !fd.get('from_preset')) {
+      showErr('请选一个 preset');
+      return false;
+    }
+    if (starter === 'extract' && fd.getAll('extract_source').length === 0) {
+      showErr('请至少勾选一份原著素材');
+      return false;
+    }
+  }
+  return true;
 }
 
-async function saveSettings() {
-  const errEl = $('#st-error');
-  errEl.hidden = true;
-  const payload = {};
-  // Sensitive: only send if user actually typed something (blank = keep).
-  const dsKey = $('#st-deepseek-key').value;
-  if (dsKey) payload.DEEPSEEK_API_KEY = dsKey;
-  const pxKey = $('#st-perplexity-key').value;
-  if (pxKey) payload.PERPLEXITY_API_KEY = pxKey;
-  // Non-sensitive: always send current form value (blank means "delete this key")
-  payload.DEEPSEEK_BASE_URL  = $('#st-deepseek-base').value;
-  payload.DEEPSEEK_MODEL     = $('#st-deepseek-model').value;
-  payload.PERPLEXITY_BASE_URL  = $('#st-perplexity-base').value;
-  payload.PERPLEXITY_MODEL     = $('#st-perplexity-model').value;
-
-  if (Object.keys(payload).length === 0) {
-    errEl.textContent = '没有要保存的字段';
-    errEl.hidden = false;
+function renderNovelsCheckboxes(root, novels, fieldName) {
+  root.innerHTML = '';
+  if (!novels.length) {
+    root.innerHTML = '<span class="form-hint">（素材库为空，去 /novels 上传）</span>';
     return;
   }
+  novels.forEach((n) => {
+    const name = n.name || n;
+    const lbl = document.createElement('label');
+    lbl.className = 'wizard-radio';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.name = fieldName;
+    input.value = name;
+    const txt = document.createElement('span');
+    txt.textContent = ' ' + name;
+    lbl.appendChild(input);
+    lbl.appendChild(txt);
+    root.appendChild(lbl);
+  });
+}
+
+async function wizardSubmit() {
+  const form = $('#project-wizard-form');
+  if (!form) return;
+  // Final validation on all steps
+  for (const step of [1, 2]) {
+    if (!wizardValidateStep(step)) {
+      wizardGoToStep(step);
+      return;
+    }
+  }
+
+  const fd = new FormData(form);
+  const starter = fd.get('genre_starter');
+  const payload = {
+    id: (fd.get('id') || '').toString().trim(),
+    display_name: (fd.get('display_name') || '').toString().trim(),
+    protagonist_name: (fd.get('protagonist_name') || '').toString().trim(),
+    chapter_count_target: Number(fd.get('chapter_count_target')),
+  };
+
+  if (starter === 'preset') {
+    payload.from_preset = fd.get('from_preset');
+  } else if (starter === 'extract') {
+    payload.from_extract = {
+      sources: fd.getAll('extract_source'),
+      with_trial: fd.get('extract_with_trial') === 'on',
+    };
+  } else {
+    payload.blank_genre = true;
+  }
+
+  // Outline starter
+  const synopsis = (fd.get('outline_synopsis') || '').toString().trim();
+  if (fd.get('blank_outline') === 'on' || !synopsis) {
+    payload.blank_outline = true;
+  } else {
+    payload.outline_synopsis = synopsis;
+  }
+
+  // Characters starter
+  const brief = (fd.get('characters_brief') || '').toString().trim();
+  if (fd.get('blank_characters') === 'on' || !brief) {
+    payload.blank_characters = true;
+  } else {
+    payload.characters_brief = brief;
+  }
+
+  const err4 = document.querySelector('[data-wizard-error="4"]');
+  if (err4) { err4.hidden = true; err4.textContent = ''; }
+  const statusEl = $('#np-create-status');
+  const textEl = statusEl ? statusEl.querySelector('.wizard-status-text') : null;
+  const markEl = statusEl ? statusEl.querySelector('.wizard-status-mark') : null;
+  const submitBtn = $('#btn-wizard-submit');
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.classList.remove('is-done', 'is-error');
+    if (markEl) markEl.textContent = '◐';
+    if (textEl) textEl.textContent = starter === 'extract'
+      ? '已提交 · 正在拆解题材（慢，后台运行）…'
+      : '正在创建作品…';
+  }
+  if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const r = await apiCall('/api/env', {
+    const r = await fetch('/api/projects/new', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    toast(`已保存 · 更新了 ${r.updated.length} 个字段`);
-    $('#dlg-settings').close();
-  } catch (e) {
-    errEl.textContent = '保存失败: ' + e.message;
-    errEl.hidden = false;
-  }
-}
-
-// =========================================================
-//  ONBOARDING (gating check on first paint)
-// =========================================================
-
-async function checkOnboarding() {
-  // Returns { needed: bool, step: 'key' | 'project' | null }
-  let envOk = false;
-  try {
-    const env = await apiCall('/api/env');
-    envOk = !!(env.DEEPSEEK_API_KEY && env.DEEPSEEK_API_KEY.set);
-  } catch (_) { /* treat as not ok */ }
-
-  if (!envOk) return { needed: true, step: 'key' };
-
-  const pid = state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project;
-  if (!pid) {
-    // Fallback: also check /api/projects in case progress.json wasn't primed
-    try {
-      const { active } = await apiCall('/api/projects');
-      if (!active) return { needed: true, step: 'project' };
-    } catch (_) {
-      return { needed: true, step: 'project' };
-    }
-  }
-  return { needed: false };
-}
-
-async function showOnboarding(step) {
-  const overlay = $('#onboarding');
-  overlay.hidden = false;
-  showOnboardingStep(step);
-  if (step === 'key') wireOnboardingKey();
-  if (step === 'project') await wireOnboardingProjects();
-}
-
-function showOnboardingStep(step) {
-  $$('.onb-step').forEach((n) => { n.hidden = n.dataset.step !== step; });
-}
-
-function wireOnboardingKey() {
-  const form = $('#onb-key-form');
-  const errEl = $('#onb-key-error');
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    errEl.hidden = true;
-    const ds = $('#onb-deepseek').value.trim();
-    const px = $('#onb-perplexity').value.trim();
-    if (!ds) {
-      errEl.textContent = 'DEEPSEEK_API_KEY 必填';
-      errEl.hidden = false;
+    if (r.status === 202) {
+      // Async extract path — poll progress
+      const data = await r.json();
+      if (textEl) textEl.textContent = '后台拆解中…（可关闭对话框，状态栏会继续轮询）';
+      await pollExtractProgress(data.project_id || payload.id);
       return;
     }
-    const payload = { DEEPSEEK_API_KEY: ds };
-    if (px) payload.PERPLEXITY_API_KEY = px;
-    try {
-      await apiCall('/api/env', { method: 'POST', body: JSON.stringify(payload) });
-      toast('已保存 · 正在检查作品…');
-      // Advance to project step (re-check in case already activated)
-      showOnboardingStep('project');
-      await wireOnboardingProjects();
-    } catch (e2) {
-      errEl.textContent = e2.message;
-      errEl.hidden = false;
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) {
+      const reason = body.reason || body.detail || body.error || ('HTTP ' + r.status);
+      throw new Error(reason);
     }
+    if (statusEl) {
+      statusEl.classList.add('is-done');
+      if (markEl) markEl.textContent = '✓';
+      if (textEl) textEl.textContent = '已创建 · 正在激活…';
+    }
+    // Activate the new project automatically
+    try {
+      await apiCall('/api/projects/activate', {
+        method: 'POST',
+        body: JSON.stringify({ id: payload.id }),
+      });
+    } catch (_) { /* activation best-effort */ }
+    toast('已创建并激活 · ' + payload.id);
+    setTimeout(() => location.reload(), 400);
+  } catch (e) {
+    if (statusEl) {
+      statusEl.classList.add('is-error');
+      if (markEl) markEl.textContent = '✕';
+      if (textEl) textEl.textContent = '创建失败';
+    }
+    if (err4) {
+      err4.textContent = e.message || '创建失败';
+      err4.hidden = false;
+    }
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function pollExtractProgress(pid) {
+  if (!pid) return;
+  const statusEl = $('#np-create-status') || $('#extract-override-progress');
+  const textEl = statusEl ? statusEl.querySelector('.wizard-status-text') : null;
+
+  for (let i = 0; i < 600; i += 1) {  // ~10 min max
+    try {
+      const r = await fetch(`/api/projects/${encodeURIComponent(pid)}/extract-genre/progress`);
+      const s = await r.json();
+      if (textEl && s.phase) {
+        textEl.textContent = `拆解中 · ${s.phase}${s.progress ? ' · ' + s.progress : ''}`;
+      }
+      if (s.state === 'done') {
+        toast('题材拆解完成 · 正在刷新…');
+        setTimeout(() => location.reload(), 400);
+        return;
+      }
+      if (s.state === 'failed' || s.state === 'aborted') {
+        const msg = `拆解${s.state === 'aborted' ? '已中止' : '失败'}：${s.error || s.state}`;
+        if (textEl) textEl.textContent = msg;
+        toast(msg, true);
+        return;
+      }
+    } catch (_) { /* tolerate polling hiccups */ }
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  toast('拆解超时 · 请刷新页面查看状态', true);
+}
+
+// =========================================================
+//  OVERRIDE GENRE (⎇ button on project home, Phase 4 Task 4.7)
+//    POSTs /api/projects/<pid>/extract-genre → 202 + pollExtractProgress.
+// =========================================================
+
+function initExtractOverride() {
+  const btn = $('#btn-extract-genre-override');
+  const dlg = $('#extract-override-dialog');
+  if (!btn || !dlg) return;
+
+  btn.onclick = async () => {
+    // Need active project id
+    const pid = getActiveProjectId();
+    if (!pid) {
+      toast('先激活一个作品', true);
+      return;
+    }
+    // Load novels pool fresh
+    const box = $('#override-novels-checkboxes');
+    if (box) {
+      box.innerHTML = '<span class="form-hint">加载中…</span>';
+      try {
+        const data = await apiCall('/api/novels');
+        renderNovelsCheckboxes(box, data.novels || [], 'override_source');
+      } catch (e) {
+        box.innerHTML = `<span class="form-error">加载失败: ${e.message}</span>`;
+      }
+    }
+    // Reset progress state
+    $('#extract-override-progress').hidden = true;
+    const errEl = $('#extract-override-error');
+    if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+    dlg.showModal();
   };
-}
 
-async function wireOnboardingProjects() {
-  const grid = $('#onb-project-grid');
-  grid.innerHTML = '<div class="project-grid-loading">加载作品列表…</div>';
-  try {
-    const { active, projects } = await apiCall('/api/projects');
-    // If somehow an active project already exists, skip onboarding.
-    if (active) {
-      $('#onboarding').hidden = true;
-      location.reload();
-      return;
-    }
-    renderProjectGrid(grid, projects, active, {
-      onActivate: async (pid) => {
-        try {
-          await apiCall('/api/projects/activate', {
-            method: 'POST',
-            body: JSON.stringify({ id: pid }),
-          });
-          toast('已激活 · 正在加载…');
-          setTimeout(() => location.reload(), 400);
-        } catch (e) {
-          toast('激活失败: ' + e.message, true);
+  const form = $('#extract-override-form');
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const sources = fd.getAll('override_source');
+      const errEl = $('#extract-override-error');
+      if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+      if (sources.length === 0) {
+        if (errEl) { errEl.textContent = '请至少勾选一份素材'; errEl.hidden = false; }
+        return;
+      }
+      const pid = getActiveProjectId();
+      if (!pid) {
+        if (errEl) { errEl.textContent = '找不到当前作品'; errEl.hidden = false; }
+        return;
+      }
+      try {
+        const r = await fetch(`/api/projects/${encodeURIComponent(pid)}/extract-genre`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sources,
+            with_trial: fd.get('override_with_trial') === 'on',
+          }),
+        });
+        const body = await r.json().catch(() => ({}));
+        if (r.status !== 202 && !r.ok) {
+          const reason = body.reason || body.detail || body.error || ('HTTP ' + r.status);
+          throw new Error(reason);
         }
-      },
-      onNew: openNewProjectWizard,
-    });
-  } catch (e) {
-    grid.innerHTML = '';
-    grid.appendChild(el('div', { class: 'form-error' }, '加载作品列表失败: ' + e.message));
+        // Show progress area, hide form
+        $('#extract-override-progress').hidden = false;
+        form.querySelectorAll('button, input').forEach((n) => { n.disabled = true; });
+        pollExtractProgress(pid);
+      } catch (e2) {
+        if (errEl) { errEl.textContent = '失败: ' + e2.message; errEl.hidden = false; }
+      }
+    };
   }
 }
 
+function getActiveProjectId() {
+  // Prefer live state snapshot (freshest); fall back to body data-attr.
+  const fromState = state.snapshot
+    && state.snapshot.progress
+    && state.snapshot.progress.active_project;
+  if (fromState) return fromState;
+  return document.body.dataset.activeProject || null;
+}
 
 function wireTabs() {
   $$('.tab[data-tab]').forEach((b) =>
@@ -1387,6 +1424,9 @@ function wireButtons() {
   // Project switcher + settings
   $('#btn-project').addEventListener('click', openProjectPicker);
   $('#btn-settings').addEventListener('click', openSettingsDialog);
+
+  // Override-genre button + dialog (Phase 4 Task 4.7)
+  initExtractOverride();
 
   // Generic dialog close (data-close-dialog)
   document.addEventListener('click', (e) => {
