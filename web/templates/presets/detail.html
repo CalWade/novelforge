@@ -1,9 +1,9 @@
-{% extends "genres/_base.html" %}
+{% extends "presets/_base.html" %}
 {% block title %}{{ gid }} · 题材详情{% endblock %}
 {% block crumbs %}
 <a href="/">作品</a>
 <span class="crumb-sep">›</span>
-<a href="/genres">题材</a>
+<a href="/presets">题材</a>
 <span class="crumb-sep">›</span>
 <span class="is-current">{{ gid }}</span>
 {% endblock %}
@@ -20,7 +20,7 @@
     <div class="genre-detail-actions">
       <button class="btn" id="btn-audit"><span class="btn-glyph">◉</span>审查</button>
       <button class="btn" id="btn-fill"><span class="btn-glyph">＋</span>补齐</button>
-      <a class="btn btn-primary" href="/genres/{{ gid }}/extract">
+      <a class="btn btn-primary" href="/presets/{{ gid }}/extract">
         <span class="btn-glyph">⎇</span>从小说拆解
       </a>
       <button class="btn btn-danger" id="btn-delete" title="删除这个题材（如果没有作品依赖它）">
@@ -67,7 +67,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='genres.js') }}" defer></script>
+<script src="{{ url_for('static', filename='presets.js') }}" defer></script>
 <script defer>
   document.addEventListener('DOMContentLoaded', () => {
     if (window.GenreUI && window.GenreUI.initDetail) window.GenreUI.initDetail({{ gid|tojson }});

@@ -1,11 +1,11 @@
-{% extends "genres/_base.html" %}
+{% extends "presets/_base.html" %}
 {% block title %}{{ gid }} · 从小说拆解{% endblock %}
 {% block crumbs %}
 <a href="/">作品</a>
 <span class="crumb-sep">›</span>
-<a href="/genres">题材</a>
+<a href="/presets">题材</a>
 <span class="crumb-sep">›</span>
-<a href="/genres/{{ gid }}">{{ gid }}</a>
+<a href="/presets/{{ gid }}">{{ gid }}</a>
 <span class="crumb-sep">›</span>
 <span class="is-current">从小说拆解</span>
 {% endblock %}
@@ -92,7 +92,7 @@
 
       <div class="form-error" id="f-error" hidden></div>
       <div class="form-actions">
-        <a class="btn btn-ghost" href="/genres/{{ gid }}">取消</a>
+        <a class="btn btn-ghost" href="/presets/{{ gid }}">取消</a>
         <button type="submit" class="btn btn-primary" id="btn-submit" disabled>
           <span class="btn-glyph">▶</span><span id="submit-label">启动拆解</span>
         </button>
@@ -103,7 +103,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='genres.js') }}" defer></script>
+<script src="{{ url_for('static', filename='presets.js') }}" defer></script>
 <script defer>
   document.addEventListener('DOMContentLoaded', () => {
     if (window.GenreUI && window.GenreUI.initExtract) window.GenreUI.initExtract({{ gid|tojson }});
