@@ -1,23 +1,23 @@
-"""Genre pipeline orchestrator.
+"""Genre pipeline orchestrator (preset-centric).
 
-Four entry points:
-- new_genre(genre_id, ...): stub scaffold, no LLM
-- fill_genre(genre_id): detect missing files, call Drafter to fill
-- audit_genre(genre_id): Validator stages 1 + 2 (no LLM for stage 1)
-- extract_from_novel(genre_id, sources, with_trial): full pipeline
+Three entry points:
+- fill_preset(preset_id): detect missing files, fill with stubs
+- audit_preset(preset_id): Validator stages 1 + 2
+- run_phase(preset_id, phase=...): intent-router rerun of a single phase
 
-The build workspace lives at genres/<id>/.build/ and is git-ignored.
+Book-centric `extract_to_preset` lives in :mod:`src.genre_extractor.to_preset`.
+
+The build workspace lives at ``presets/<id>/.build/`` and is git-ignored.
 """
 from __future__ import annotations
 
-import json
 import threading
 import time
 from pathlib import Path
 
 from src import config
 from src.core.blackboard import Blackboard
-from src.genre_extractor import adaptive, chapter_detector, core, schemas
+from src.genre_extractor import core, schemas
 from src.genre_extractor.chapter_stream import ChapterStream
 
 
@@ -37,8 +37,8 @@ def _check_cancel() -> None:
         raise GenrePipelineAborted("genre pipeline aborted by cancel signal")
 
 
-STUB_GENRE_YAML = """# Genre: {genre_id}
-id: {genre_id}
+STUB_GENRE_YAML = """# Preset: {preset_id}
+id: {preset_id}
 display_name: "{display_name}"
 locale: zh-Hans
 genre: "{genre}"
@@ -50,18 +50,18 @@ genre_avoid: []
 prohibited_styles: []
 """
 
-STUB_ERA = """# Era · {genre_id}
+STUB_ERA = """# Era · {preset_id}
 
 （占位：此文件描述 {era} 的时代事实。由后续题材流水线的 Drafter 填充，
 或作者手工编写。至少 500 字才能通过 setting_lint。）
 """
 
-STUB_WRITING_STYLE = """# Writing Style Extra · {genre_id}
+STUB_WRITING_STYLE = """# Writing Style Extra · {preset_id}
 
-（占位：此文件描述 {genre_id} 题材特有的风格规范。至少 300 字才能通过 setting_lint。）
+（占位：此文件描述 {preset_id} 题材特有的风格规范。至少 300 字才能通过 setting_lint。）
 """
 
-STUB_IRON_LAWS = """# Iron Laws Extra · {genre_id}
+STUB_IRON_LAWS = """# Iron Laws Extra · {preset_id}
 
 ## iron_law_extra_1: （占位规则一）
 
@@ -73,52 +73,14 @@ STUB_IRON_LAWS = """# Iron Laws Extra · {genre_id}
 """
 
 
-def _build_dir(genre_id: str) -> Path:
-    return config.GENRES_DIR / genre_id / ".build"
+def _build_dir(preset_id: str) -> Path:
+    return config.PRESETS_DIR / preset_id / ".build"
 
 
-def _build_bb(genre_id: str) -> Blackboard:
-    bd = _build_dir(genre_id)
+def _build_bb(preset_id: str) -> Blackboard:
+    bd = _build_dir(preset_id)
     bd.mkdir(parents=True, exist_ok=True)
     return Blackboard(root=bd)
-
-
-def new_genre(
-    genre_id: str,
-    *,
-    display_name: str = "",
-    genre: str = "",
-    era: str = "",
-    tone: str = "",
-) -> dict:
-    """Create a minimal scaffold under genres/<id>/. No LLM call."""
-    genre_dir = config.GENRES_DIR / genre_id
-    if genre_dir.exists():
-        raise FileExistsError(f"Genre already exists: {genre_dir}")
-    genre_dir.mkdir(parents=True)
-
-    ctx = dict(
-        genre_id=genre_id,
-        display_name=display_name or genre_id,
-        genre=genre or "TBD",
-        era=era or "TBD",
-        tone=tone or "TBD",
-    )
-    (genre_dir / "genre.yaml").write_text(STUB_GENRE_YAML.format(**ctx), encoding="utf-8")
-    (genre_dir / "era.md").write_text(STUB_ERA.format(**ctx), encoding="utf-8")
-    (genre_dir / "writing-style-extra.md").write_text(
-        STUB_WRITING_STYLE.format(**ctx), encoding="utf-8"
-    )
-    (genre_dir / "iron-laws-extra.md").write_text(
-        STUB_IRON_LAWS.format(**ctx), encoding="utf-8"
-    )
-
-    bb = _build_bb(genre_id)
-    bb.write_yaml(
-        "build_status.yaml",
-        schemas.make_initial_build_status(genre_id=genre_id, entry="new-genre"),
-    )
-    return {"ok": True, "genre_id": genre_id, "path": str(genre_dir)}
 
 
 def _count_chapters_in_text(text: str) -> int:
@@ -134,83 +96,6 @@ def _split_text_into_batches(
     return core.split_text_into_batches(
         text, batch_size=batch_size, total_chapters=total_chapters,
     )
-
-
-def extract_from_novel(
-    genre_id: str,
-    *,
-    sources: list[str],
-    with_trial: bool = False,
-    dry_run: bool = False,
-) -> dict:
-    """End-to-end extract -> merge -> draft -> validate.
-
-    Each phase updates build_status.yaml. Can be resumed mid-phase via
-    --extract-only / --merge-only etc.
-
-    dry_run: don't actually call LLM; just set up status and noop stages.
-    Used by CLI tests.
-    """
-    genre_dir = config.GENRES_DIR / genre_id
-    genre_dir.mkdir(parents=True, exist_ok=True)
-
-    bb = _build_bb(genre_id)
-
-    # Count chapters per source. ChapterStream uses a streaming index for
-    # files >= 5MB so we never load multi-MB novels fully into memory.
-    novel_sources = []
-    # Each entry: (ChapterStream, batch_size).
-    source_streams: list[tuple[ChapterStream, int]] = []
-    for src in sources:
-        p = Path(src)
-        if not p.exists():
-            raise FileNotFoundError(f"source novel not found: {src}")
-        stream = ChapterStream(p)
-        total_ch = stream.total_chapters
-        bs = adaptive.adaptive_batch_size(total_ch)
-        novel_sources.append(
-            {"path": str(p), "total_chapters": total_ch, "batch_size": bs}
-        )
-        source_streams.append((stream, bs))
-
-    # Fresh build_status
-    status = schemas.make_initial_build_status(
-        genre_id=genre_id,
-        entry="extract-from-novel",
-        novel_sources=novel_sources,
-    )
-    bb.write_yaml("build_status.yaml", status)
-
-    if dry_run:
-        # Mark all phases done without LLM
-        for phase in ("extract", "merge", "draft", "validate"):
-            schemas.update_phase_status(bb, phase=phase, status="done")
-        return {
-            "ok": True,
-            "mode": "dry_run",
-            "genre_id": genre_id,
-            "sources": novel_sources,
-            "with_trial": with_trial,
-        }
-
-    # --- Phase 1: Extract ---
-    _run_extract(bb, source_streams)
-
-    # --- Phase 2: Merge ---
-    _run_merge(bb)
-
-    # --- Phase 3: Draft ---
-    _run_draft(bb, genre_id)
-
-    # --- Phase 4: Validate ---
-    _run_validate(bb, genre_id, with_trial=with_trial)
-
-    return {
-        "ok": True,
-        "genre_id": genre_id,
-        "phases": bb.read_yaml("build_status.yaml")["phases"],
-        "with_trial": with_trial,
-    }
 
 
 def _run_extract(bb: Blackboard, source_streams):
@@ -244,29 +129,28 @@ def _run_merge_multitier(bb: Blackboard, batch_ids: list[int]):
 BOOK_ARC_THRESHOLD = core.BOOK_ARC_THRESHOLD
 
 
-def _run_draft(bb: Blackboard, genre_id: str):
+def _run_draft(bb: Blackboard, preset_id: str):
     """Populate the blueprint via ``core.run_draft`` then render files into
-    ``genres/<id>/`` (the legacy preset location). New callers that want
-    custom output should use ``core.run_draft`` + ``core.render_files_from_blueprint``
-    directly.
+    ``presets/<id>/``. New callers that want custom output should use
+    ``core.run_draft`` + ``core.render_files_from_blueprint`` directly.
     """
-    core.run_draft(bb, genre_id)
-    _render_files_from_blueprint(bb, genre_id)
+    core.run_draft(bb, preset_id)
+    _render_files_from_blueprint(bb, preset_id)
 
 
-def _render_files_from_blueprint(bb: Blackboard, genre_id: str):
+def _render_files_from_blueprint(bb: Blackboard, preset_id: str):
     """Deterministic template fill. v1 = only ensure the 4 stubs exist.
 
     Production rendering (reading blueprint.era_observations -> era.md paragraphs,
     blueprint.iron_law_candidates -> iron_law_extra_N sections) is deferred to
     a follow-up iteration so v1 can focus on schema plumbing.
     """
-    genre_dir = config.GENRES_DIR / genre_id
-    genre_dir.mkdir(parents=True, exist_ok=True)
+    preset_dir = config.PRESETS_DIR / preset_id
+    preset_dir.mkdir(parents=True, exist_ok=True)
     # Only fill stubs that don't exist; never overwrite real content.
     ctx = dict(
-        genre_id=genre_id,
-        display_name=genre_id,
+        preset_id=preset_id,
+        display_name=preset_id,
         genre="TBD", era="TBD", tone="TBD",
     )
     for fname, tmpl in (
@@ -275,11 +159,11 @@ def _render_files_from_blueprint(bb: Blackboard, genre_id: str):
         ("writing-style-extra.md", STUB_WRITING_STYLE),
         ("iron-laws-extra.md", STUB_IRON_LAWS),
     ):
-        if not (genre_dir / fname).exists():
-            (genre_dir / fname).write_text(tmpl.format(**ctx), encoding="utf-8")
+        if not (preset_dir / fname).exists():
+            (preset_dir / fname).write_text(tmpl.format(**ctx), encoding="utf-8")
 
 
-def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool,
+def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
                   max_fix_retries: int = 2):
     """Run Validator Stages 1+2, then Fixer retry loop up to `max_fix_retries` times.
 
@@ -302,17 +186,17 @@ def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool,
         bb.write_text("genre_issues.jsonl", "")
 
         # Stage 1: structural (setting_lint)
-        _run_setting_lint(bb, genre_id)
+        _run_setting_lint(bb, preset_id)
 
         # Stage 2: semantic
         try:
-            GenreValidator().run(bb, genre_id=genre_id)
+            GenreValidator().run(bb, genre_id=preset_id)
         except Exception as e:
             bb.append_jsonl("genre_issues.jsonl", {
                 "severity": "warning",
                 "file": "(validator)",
                 "message": f"Stage 2 failed: {type(e).__name__}: {e}",
-                "genre_id": genre_id,
+                "genre_id": preset_id,
             })
 
         issues = bb.read_jsonl("genre_issues.jsonl")
@@ -323,14 +207,14 @@ def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool,
 
         if attempt < max_fix_retries:
             # Ask Fixer to patch the offending files, one file at a time.
-            _apply_fixer_round(bb, genre_id, final_errors)
+            _apply_fixer_round(bb, preset_id, final_errors)
         # else: will fall through to ship_with_debt below
 
     if final_errors:
         # Lesson 4: ship with debt rather than loop forever.
         bb.append_jsonl("genre_debt.jsonl", {
             "ts": time.time(),
-            "genre_id": genre_id,
+            "genre_id": preset_id,
             "retries_used": max_fix_retries,
             "unresolved_errors": final_errors,
         })
@@ -338,12 +222,12 @@ def _run_validate(bb: Blackboard, genre_id: str, *, with_trial: bool,
     # Stage 3: trial (optional), runs after the fix loop stabilized (or gave up)
     if with_trial:
         from src.genre_extractor import trial
-        trial.run_trial(genre_id, bb)
+        trial.run_trial(preset_id, bb)
 
     schemas.update_phase_status(bb, phase="validate", status="done")
 
 
-def _apply_fixer_round(bb: Blackboard, genre_id: str, errors: list) -> None:
+def _apply_fixer_round(bb: Blackboard, preset_id: str, errors: list) -> None:
     """Group errors by file, invoke GenreFixer once per file.
 
     Fixer silently skips files that can't be resolved from `file` metadata
@@ -364,28 +248,28 @@ def _apply_fixer_round(bb: Blackboard, genre_id: str, errors: list) -> None:
     fixer = GenreFixer()
     for fname, file_issues in by_file.items():
         try:
-            fixer.run(bb, genre_id=genre_id, file_name=fname, issues=file_issues)
+            fixer.run(bb, genre_id=preset_id, file_name=fname, issues=file_issues)
         except Exception as e:
             bb.append_jsonl("genre_issues.jsonl", {
                 "severity": "warning",
                 "file": fname,
                 "message": f"Fixer failed on {fname}: {type(e).__name__}: {e}",
-                "genre_id": genre_id,
+                "genre_id": preset_id,
             })
 
 
-def _run_setting_lint(bb: Blackboard, genre_id: str):
+def _run_setting_lint(bb: Blackboard, preset_id: str):
     """Call setting_lint.lint_genre and translate its LintReport to genre_issues."""
     from src.tools import setting_lint
 
     try:
-        report = setting_lint.lint_genre(genre_id)
+        report = setting_lint.lint_genre(preset_id)
     except Exception as e:
         bb.append_jsonl("genre_issues.jsonl", {
             "severity": "warning",
             "file": "(setting_lint)",
             "message": f"setting_lint failed: {type(e).__name__}: {e}",
-            "genre_id": genre_id,
+            "genre_id": preset_id,
         })
         return
 
@@ -396,61 +280,61 @@ def _run_setting_lint(bb: Blackboard, genre_id: str):
             "severity": level_map.get(issue.level, "info"),
             "file": issue.file,
             "message": issue.message,
-            "genre_id": genre_id,
+            "genre_id": preset_id,
             "source": "setting_lint",
         })
 
 
-def fill_genre(genre_id: str) -> dict:
+def fill_preset(preset_id: str) -> dict:
     """Detect missing files and fill with stubs. v1: no LLM."""
-    genre_dir = config.GENRES_DIR / genre_id
-    if not genre_dir.exists():
-        raise FileNotFoundError(f"genre not found: {genre_id}")
+    preset_dir = config.PRESETS_DIR / preset_id
+    if not preset_dir.exists():
+        raise FileNotFoundError(f"preset not found: {preset_id}")
     missing = []
-    ctx = dict(genre_id=genre_id, display_name=genre_id, genre="TBD", era="TBD", tone="TBD")
+    ctx = dict(preset_id=preset_id, display_name=preset_id, genre="TBD", era="TBD", tone="TBD")
     for fname, stub_template in (
         ("genre.yaml", STUB_GENRE_YAML),
         ("era.md", STUB_ERA),
         ("writing-style-extra.md", STUB_WRITING_STYLE),
         ("iron-laws-extra.md", STUB_IRON_LAWS),
     ):
-        if not (genre_dir / fname).exists():
+        if not (preset_dir / fname).exists():
             missing.append(fname)
-            (genre_dir / fname).write_text(
+            (preset_dir / fname).write_text(
                 stub_template.format(**ctx), encoding="utf-8",
             )
-    return {"ok": True, "genre_id": genre_id, "filled": missing}
+    return {"ok": True, "preset_id": preset_id, "filled": missing}
 
 
-def audit_genre(genre_id: str) -> dict:
+def audit_preset(preset_id: str) -> dict:
     """Run Validator stages 1 + 2. Returns summary."""
-    bb = _build_bb(genre_id)
+    bb = _build_bb(preset_id)
     # Ensure a build_status exists so helpers work; if not, create a minimal one.
     if not bb.exists("build_status.yaml"):
         bb.write_yaml(
             "build_status.yaml",
             schemas.make_initial_build_status(
-                genre_id=genre_id, entry="audit-genre", novel_sources=[],
+                genre_id=preset_id, entry="audit-preset", novel_sources=[],
             ),
         )
-    _run_validate(bb, genre_id, with_trial=False)
+    _run_validate(bb, preset_id, with_trial=False)
     issues = bb.read_jsonl("genre_issues.jsonl")
     errors = [i for i in issues if i.get("severity") == "error"]
     warnings = [i for i in issues if i.get("severity") == "warning"]
     return {
         "ok": len(errors) == 0,
-        "genre_id": genre_id,
+        "preset_id": preset_id,
         "error_count": len(errors),
         "warning_count": len(warnings),
     }
 
 
-def run_phase(genre_id: str, *, phase: str, with_trial: bool = False) -> dict:
+def run_phase(preset_id: str, *, phase: str, with_trial: bool = False) -> dict:
     """Intent-router entry: rerun a single phase. Build status must already exist."""
-    bb = _build_bb(genre_id)
+    bb = _build_bb(preset_id)
     if not bb.exists("build_status.yaml"):
         raise FileNotFoundError(
-            f"no build_status.yaml for {genre_id}; run --extract-from-novel first"
+            f"no build_status.yaml for {preset_id}; run --to-preset first"
         )
     if phase == "extract":
         # Requires re-reading the source novels — look them up in build_status
@@ -465,9 +349,9 @@ def run_phase(genre_id: str, *, phase: str, with_trial: bool = False) -> dict:
     elif phase == "merge":
         _run_merge(bb)
     elif phase == "draft":
-        _run_draft(bb, genre_id)
+        _run_draft(bb, preset_id)
     elif phase == "validate":
-        _run_validate(bb, genre_id, with_trial=with_trial)
+        _run_validate(bb, preset_id, with_trial=with_trial)
     else:
         raise ValueError(f"unknown phase: {phase}")
-    return {"ok": True, "genre_id": genre_id, "phase": phase}
+    return {"ok": True, "preset_id": preset_id, "phase": phase}
