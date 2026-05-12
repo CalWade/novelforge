@@ -262,6 +262,20 @@ def _run_merge(bb: Blackboard):
         ):
             merged[key].extend(note.get(key, []))
     bb.write_yaml("extraction_notes/latest_merged.yaml", merged)
+
+    # Generate human-readable health dashboard. genre_id is read from
+    # build_status rather than added as a parameter, keeping _run_merge's
+    # signature stable for intent-router callers.
+    try:
+        from src.genre_pipeline.tally import generate_extraction_tally
+        status = bb.read_yaml("build_status.yaml")
+        genre_id = (status or {}).get("genre_id", "unknown")
+        tally_md = generate_extraction_tally(bb, genre_id)
+        bb.write_text("extraction_tally.md", tally_md)
+    except Exception:
+        # Tally is a nice-to-have; its failure must not block the merge phase.
+        pass
+
     schemas.update_phase_status(bb, phase="merge", status="done")
 
 
