@@ -1259,6 +1259,10 @@ a:hover { text-decoration: underline; }
   position: relative;
   z-index: 4;
 }
+/* Defensive: HTML [hidden] has default `display: none` but any CSS rule that
+   sets `display` on the same element will silently override it. Promote
+   [hidden] so it wins regardless of other selectors in this file. */
+[hidden] { display: none !important; }
 .readonly-mark { font-size: 12px; }
 .readonly-text { letter-spacing: 0.04em; }
 
