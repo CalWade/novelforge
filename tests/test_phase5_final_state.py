@@ -80,3 +80,14 @@ def test_web_ui_guide_routes_point_to_presets():
     assert "4 步" in text or "四步" in text
     # extract-genre endpoint
     assert "extract-genre" in text
+
+
+def test_migration_script_removed_after_use():
+    """Migration script is one-shot; deleted after merging."""
+    assert not (REPO / "scripts" / "migrate_to_book_centric.py").exists()
+    assert not (REPO / "tests" / "test_migration_script.py").exists()
+
+
+def test_changelog_mentions_book_centric():
+    text = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "book-centric" in text.lower() or "一本书" in text

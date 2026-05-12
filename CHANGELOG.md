@@ -11,6 +11,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Dates are local
 
 ---
 
+## 2026-05-12 — Book-centric workflow 重构
+
+### Breaking
+- `genres/` 目录删除；题材 4 份文件下沉到 `projects/<book-id>/` 根目录
+- `src/genre_pipeline/` 重命名为 `src/genre_extractor/`；CLI 入口改为 `--to-preset`
+- `src/pipeline.py` 新增 `--extract-genre <book-id> --sources ...`
+- Web `/genres*` 路由全部删除，替换为 `/presets*`；新建 preset 仅通过"从原著拆"入口
+- `config.GENRES_DIR` 删除；改用 `config.PRESETS_DIR`
+- `bootstrap_project` 不再合并 genre + project 两层；单层拷贝
+
+### Added
+- `presets/` 目录（新建作品的可选起点模板库）
+- 新建作品向导扩展为 4 步（基本信息 / 题材起点三选一 / 大纲起点 / 人物简介）
+- `OutlineDrafter` / `CharactersDrafter`：两个轻量向导 agent
+- `POST /api/projects/<id>/extract-genre` / `draft-outline` / `draft-characters`
+- `POST /api/presets/new-from-novel` + `/api/presets/<id>/status`
+- `/api/novels` 响应补 `used_by_presets`；删除被引用素材要二次确认
+- 作品首页 `⎇ 覆盖题材` 按钮
+
+---
+
 ## 2026-05-12 — 素材库 + 编码兜底
 
 ### Added
