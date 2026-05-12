@@ -17,7 +17,7 @@ from pathlib import Path
 
 from src import config
 from src.core.blackboard import Blackboard
-from src.genre_extractor import adaptive, chapter_detector, schemas
+from src.genre_extractor import adaptive, chapter_detector, core, schemas
 from src.genre_extractor.chapter_stream import ChapterStream
 
 
@@ -122,39 +122,18 @@ def new_genre(
 
 
 def _count_chapters_in_text(text: str) -> int:
-    """Delegate to chapter_detector; supports multi-format chapter markers."""
-    return chapter_detector.count_chapters(text)
+    """Delegate to :mod:`genre_extractor.core`."""
+    return core.count_chapters_in_text(text)
 
 
 def _split_text_into_batches(
     text: str, total_chapters: int, batch_size: int
 ) -> list[str]:
-    """Split novel text into batches of exactly ``batch_size`` chapters each.
-
-    Uses real chapter offsets from :mod:`chapter_detector` rather than the
-    old character-count approximation, so batch boundaries align with
-    chapter boundaries. When no markers are found the whole text is
-    returned as a single batch.
-
-    The ``total_chapters`` argument is accepted for backwards compatibility
-    but is not consulted — the detector is re-run to find actual offsets.
-    """
-    if batch_size <= 0:
-        raise ValueError(f"batch_size must be positive, got {batch_size}")
-    if not text:
-        return []
-
-    splits = chapter_detector.find_chapter_splits(text)
-    # splits[i] = start offset of chapter i+1; first is always 0. Append
-    # len(text) as a sentinel so we can take [splits[i], splits[i+1]) slices.
-    boundaries = splits + [len(text)]
-
-    out: list[str] = []
-    n_chapters = len(splits)
-    for start_ch in range(0, n_chapters, batch_size):
-        end_ch = min(start_ch + batch_size, n_chapters)
-        out.append(text[boundaries[start_ch]:boundaries[end_ch]])
-    return out
+    """Delegate to :mod:`genre_extractor.core`. ``total_chapters`` is kept in
+    the signature for backwards compatibility but ignored by core."""
+    return core.split_text_into_batches(
+        text, batch_size=batch_size, total_chapters=total_chapters,
+    )
 
 
 def extract_from_novel(
@@ -235,174 +214,44 @@ def extract_from_novel(
 
 
 def _run_extract(bb: Blackboard, source_streams):
-    """Run the Extractor over each novel source, one batch at a time.
-
-    `source_streams` is a list of (ChapterStream, batch_size) tuples. Each
-    batch's text is loaded lazily via stream.read_batch() so peak RAM stays
-    bounded regardless of novel size.
-    """
-    from src.genre_extractor.agents.extractor import GenreExtractor
-
-    schemas.update_phase_status(bb, phase="extract", status="in_progress")
-    agent = GenreExtractor()
-    global_batch_id = 0
-    for stream, bs in source_streams:
-        total_ch = stream.total_chapters
-        for start_ch, end_ch in adaptive.split_into_batches(
-            total_chapters=total_ch, batch_size=bs
-        ):
-            global_batch_id += 1
-            btxt = stream.read_batch(start_ch, end_ch)
-            schemas.set_in_flight(bb, agent="genre_extractor", batch_id=global_batch_id)
-            agent.run(bb, batch_id=global_batch_id, batch_text=btxt)
-            schemas.record_batch_done(bb, batch_id=global_batch_id)
-    schemas.clear_in_flight(bb)
-    schemas.update_phase_status(bb, phase="extract", status="done")
+    """Delegate to :mod:`genre_extractor.core`."""
+    core.run_extract(bb, source_streams)
 
 
 def _run_merge(bb: Blackboard):
-    """Three-tier merge: batch → arc → book-level latest_merged.yaml.
-
-    Regimes (drives LLM call count):
-      ≤ ARC_BATCH_COUNT batches    → pure concat, 0 LLM calls (short book)
-      5 – 4×ARC_BATCH_COUNT batches → arc tier only, ≥2 arc_merger calls
-      > 4×ARC_BATCH_COUNT batches  → arc tier + 1 book_distiller call (long book)
-
-    With ARC_BATCH_COUNT=4 (from arc_merger.py) this maps cleanly to the
-    adaptive batch-size rules:
-      50 ch  / bs=10 →  5 batches → 2 arcs, no distill
-      400 ch / bs=25 → 16 batches → 4 arcs + 1 distill
-      1000ch / bs=40 → 25 batches → 6-7 arcs + 1 distill
-
-    Complements the 2-step summarizer pattern from
-    src/agents/multi_level_summarizer.py but scoped to extraction notes.
-    """
-    from src.genre_extractor.agents.arc_merger import (
-        ARC_BATCH_COUNT, GenreArcMerger,
-    )
-
-    schemas.update_phase_status(bb, phase="merge", status="in_progress")
-    notes = bb.list_files("extraction_notes", "batch-*.yaml")
-    batch_ids = sorted(
-        bid for bid in (_parse_batch_id(p.name) for p in notes) if bid is not None
-    )
-
-    if len(batch_ids) <= ARC_BATCH_COUNT:
-        # Regime 1: pure concat, no LLM. Preserves the historical v1 behavior
-        # for short books where arc-level summarization buys no context relief.
-        _run_merge_concat(bb, notes)
-    else:
-        # Regime 2 & 3: arc tier (always), book distill (when arcs ≥ 2).
-        _run_merge_multitier(bb, batch_ids)
-
-    # Health dashboard — best-effort. Keeps signature stable for intent-router.
-    try:
-        from src.genre_extractor.tally import generate_extraction_tally
-        status = bb.read_yaml("build_status.yaml")
-        genre_id = (status or {}).get("genre_id", "unknown")
-        tally_md = generate_extraction_tally(bb, genre_id)
-        bb.write_text("extraction_tally.md", tally_md)
-    except Exception:
-        pass
-
-    schemas.update_phase_status(bb, phase="merge", status="done")
+    """Delegate to :mod:`genre_extractor.core`."""
+    core.run_merge(bb)
 
 
 def _parse_batch_id(fname: str) -> int | None:
-    """batch-NNN.yaml → NNN. Returns None if not matching."""
-    import re as _re
-    m = _re.match(r"batch-(\d+)\.yaml$", fname)
-    return int(m.group(1)) if m else None
+    """Delegate to :mod:`genre_extractor.core`."""
+    return core._parse_batch_id(fname)
 
 
 def _run_merge_concat(bb: Blackboard, notes):
-    """Short-book fallback: concat all batch notes without LLM."""
-    merged = {
-        "merged_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "batches": [p.name for p in notes],
-        "era_observations": [],
-        "iron_law_candidates": [],
-        "style_markers": [],
-        "resource_candidates": [],
-        "open_questions": [],
-    }
-    for note_path in notes:
-        try:
-            note = bb.read_yaml(f"extraction_notes/{note_path.name}")
-        except Exception:
-            continue
-        for key in (
-            "era_observations",
-            "iron_law_candidates",
-            "style_markers",
-            "resource_candidates",
-            "open_questions",
-        ):
-            merged[key].extend(note.get(key, []))
-    bb.write_yaml("extraction_notes/latest_merged.yaml", merged)
+    """Delegate to :mod:`genre_extractor.core`."""
+    core._run_merge_concat(bb, notes)
 
 
 def _run_merge_multitier(bb: Blackboard, batch_ids: list[int]):
-    """Long-book 3-tier merge. Assumes len(batch_ids) > ARC_BATCH_COUNT.
-
-    Groups batches into arcs of ARC_BATCH_COUNT and calls GenreArcMerger once
-    per group. If ≥2 arcs result, calls GenreBookDistiller once to produce
-    the final latest_merged. If exactly 1 arc would result (shouldn't given
-    our guard above), promotes that arc directly; if exactly 2 arcs, we
-    consolidate the last arc as latest_merged to avoid an extra LLM call
-    when the compression ratio is low.
-    """
-    from src.genre_extractor.agents.arc_merger import (
-        ARC_BATCH_COUNT, GenreArcMerger,
-    )
-    from src.genre_extractor.agents.book_distiller import GenreBookDistiller
-
-    arc_merger = GenreArcMerger()
-    arc_ids: list[int] = []
-
-    # Chunk batches into ARC_BATCH_COUNT-sized groups.
-    for arc_idx, start in enumerate(range(0, len(batch_ids), ARC_BATCH_COUNT), start=1):
-        group = batch_ids[start:start + ARC_BATCH_COUNT]
-        arc_merger.run(bb, arc_id=arc_idx, batch_ids=group)
-        arc_ids.append(arc_idx)
-
-    if len(arc_ids) == 1:
-        # Theoretically unreachable given the ≤ARC_BATCH_COUNT guard, but
-        # defensive: promote the single arc directly.
-        arc_yaml = bb.read_yaml(f"extraction_notes/arcs/arc-{arc_ids[0]:03d}.yaml")
-        arc_yaml.setdefault("distilled_from_arcs", list(arc_ids))
-        bb.write_yaml("extraction_notes/latest_merged.yaml", arc_yaml)
-        return
-
-    # Threshold: distill only when arcs ≥ BOOK_ARC_THRESHOLD.
-    # With 2-3 arcs, the last arc's note already represents a fully-merged
-    # view (arcs aren't independent — each reads its neighbors' notes) so we
-    # promote the final arc directly and save an LLM call.
-    # With ≥ BOOK_ARC_THRESHOLD arcs, run the distiller to aggressively
-    # deduplicate across arcs.
-    if len(arc_ids) < BOOK_ARC_THRESHOLD:
-        final_arc = arc_ids[-1]
-        arc_yaml = bb.read_yaml(f"extraction_notes/arcs/arc-{final_arc:03d}.yaml")
-        arc_yaml.setdefault("distilled_from_arcs", list(arc_ids))
-        bb.write_yaml("extraction_notes/latest_merged.yaml", arc_yaml)
-        return
-
-    GenreBookDistiller().run(bb, arc_ids=arc_ids)
+    """Delegate to :mod:`genre_extractor.core`."""
+    core._run_merge_multitier(bb, batch_ids)
 
 
 # Threshold for book-level distill: ≥ 4 arcs → distill. Below that, the
-# last arc is promoted to latest_merged directly. See _run_merge_multitier.
-BOOK_ARC_THRESHOLD = 4
+# last arc is promoted to latest_merged directly. Kept here for backwards
+# compatibility — the authoritative constant lives in ``core``.
+BOOK_ARC_THRESHOLD = core.BOOK_ARC_THRESHOLD
 
 
 def _run_draft(bb: Blackboard, genre_id: str):
-    from src.genre_extractor.agents.drafter import GenreDrafter
-
-    schemas.update_phase_status(bb, phase="draft", status="in_progress")
-    bb.write_yaml("genre_blueprint.yaml", schemas.make_empty_blueprint(genre_id=genre_id))
-    GenreDrafter().run(bb)
+    """Populate the blueprint via ``core.run_draft`` then render files into
+    ``genres/<id>/`` (the legacy preset location). New callers that want
+    custom output should use ``core.run_draft`` + ``core.render_files_from_blueprint``
+    directly.
+    """
+    core.run_draft(bb, genre_id)
     _render_files_from_blueprint(bb, genre_id)
-    schemas.update_phase_status(bb, phase="draft", status="done")
 
 
 def _render_files_from_blueprint(bb: Blackboard, genre_id: str):
