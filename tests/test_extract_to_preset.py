@@ -23,13 +23,17 @@ def test_extract_to_preset_creates_preset_dir(fake_repo, monkeypatch):
     # Patch the internal pipeline-driver to avoid calling LLMs
     monkeypatch.setattr(
         to_preset, "_run_full_extraction_to_blueprint",
-        lambda bb, sources: {
+        lambda bb, sources, **_: {
             "era": {"content": "# Era stub"},
             "writing_style_extra": {"content": "# Style stub"},
             "iron_laws_extra": {"content": "# Laws stub"},
             "resource_schema": None,
         },
     )
+    # Neutralise Validator so existing assertions about file content hold —
+    # the real validator would (correctly) rewrite AI-slop stubs.
+    from src.genre_extractor import pipeline
+    monkeypatch.setattr(pipeline, "_run_validate", lambda *a, **k: None)
     result = to_preset.extract_to_preset(
         preset_id="myp",
         sources=["a.txt", "b.txt"],
@@ -55,7 +59,7 @@ def test_extract_to_preset_resolves_source_paths_via_pool(fake_repo, monkeypatch
     from src.genre_extractor import to_preset
     captured = {}
 
-    def _fake(bb, sources):
+    def _fake(bb, sources, **_):
         captured["sources"] = sources
         return {
             "era": {"content": "e"}, "writing_style_extra": {"content": "s"},
@@ -63,6 +67,8 @@ def test_extract_to_preset_resolves_source_paths_via_pool(fake_repo, monkeypatch
         }
 
     monkeypatch.setattr(to_preset, "_run_full_extraction_to_blueprint", _fake)
+    from src.genre_extractor import pipeline
+    monkeypatch.setattr(pipeline, "_run_validate", lambda *a, **k: None)
     to_preset.extract_to_preset(
         preset_id="p2",
         sources=["a.txt", "novels/b.txt"],

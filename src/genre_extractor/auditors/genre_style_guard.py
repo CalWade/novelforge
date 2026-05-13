@@ -75,19 +75,34 @@ class GenreStyleGuard(BaseAgent):
 
     SYSTEM_PROMPT = SYSTEM_PROMPT
 
-    def _build_prompts(self, bb: Blackboard, *, genre_id: str, **_):
+    def _build_prompts(
+        self,
+        bb: Blackboard,
+        *,
+        genre_id: str,
+        files_dir=None,
+        **_,
+    ):
+        from pathlib import Path
+
         from src import config
 
-        genre_dir = config.PRESETS_DIR / genre_id
+        genre_dir = Path(files_dir) if files_dir is not None else (config.PRESETS_DIR / genre_id)
         blocks: list[str] = []
         inputs_read: list[str] = []
+
+        def _rel_label(fp) -> str:
+            try:
+                return str(fp.relative_to(config.PROJECT_ROOT))
+            except ValueError:
+                return f"{genre_dir.name}/{fp.name}"
 
         for fname in ("writing-style-extra.md", "era.md"):
             fp = genre_dir / fname
             if fp.exists():
                 text = fp.read_text(encoding="utf-8")
                 blocks.append(f"<file name=\"{fname}\">\n{text[:4000]}\n</file>")
-                inputs_read.append(f"genres/{genre_id}/{fname}")
+                inputs_read.append(_rel_label(fp))
 
         # Include rules/writing-style-core.md for cross-rule check
         core_path = config.RULES_DIR / "writing-style-core.md"

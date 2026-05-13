@@ -163,8 +163,14 @@ def _render_files_from_blueprint(bb: Blackboard, preset_id: str):
             (preset_dir / fname).write_text(tmpl.format(**ctx), encoding="utf-8")
 
 
-def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
-                  max_fix_retries: int = 2):
+def _run_validate(
+    bb: Blackboard,
+    preset_id: str,
+    *,
+    with_trial: bool,
+    max_fix_retries: int = 2,
+    files_dir: Path | None = None,
+):
     """Run Validator Stages 1+2, then Fixer retry loop up to `max_fix_retries` times.
 
     Mirrors the novel pipeline's Evaluator→Fixer ≤2 retry pattern (Lesson 4):
@@ -174,8 +180,29 @@ def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
       attempt 2: validate → if still error: ship_with_debt to genre_debt.jsonl
 
     Stage 3 (trial) runs only at the end if with_trial=True.
+
+    When ``files_dir`` is supplied, Validator / Fixer / setting_lint all read
+    and write against that directory; otherwise the legacy behaviour applies
+    (``PRESETS_DIR / preset_id``). This keeps ``audit_preset`` / ``run_phase``
+    callers unchanged while letting ``extract_to_project`` / ``extract_to_preset``
+    point at arbitrary scope directories.
     """
     from src.genre_extractor.agents.validator import GenreValidator
+
+    # Defensive: extract_to_project / extract_to_preset may call us right
+    # after run_draft without a build_status.yaml (the run_draft path
+    # doesn't always seed one when called via the book-centric entry points).
+    # Without this, update_phase_status would KeyError / FileNotFoundError
+    # and the whole validate phase would be reported as failed.
+    if not bb.exists("build_status.yaml"):
+        bb.write_yaml(
+            "build_status.yaml",
+            schemas.make_initial_build_status(
+                genre_id=preset_id,
+                entry="validate",
+                novel_sources=[],
+            ),
+        )
 
     schemas.update_phase_status(bb, phase="validate", status="in_progress")
 
@@ -186,11 +213,11 @@ def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
         bb.write_text("genre_issues.jsonl", "")
 
         # Stage 1: structural (setting_lint)
-        _run_setting_lint(bb, preset_id)
+        _run_setting_lint(bb, preset_id, files_dir=files_dir)
 
         # Stage 2: semantic
         try:
-            GenreValidator().run(bb, genre_id=preset_id)
+            GenreValidator().run(bb, genre_id=preset_id, files_dir=files_dir)
         except Exception as e:
             bb.append_jsonl("genre_issues.jsonl", {
                 "severity": "warning",
@@ -207,7 +234,7 @@ def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
 
         if attempt < max_fix_retries:
             # Ask Fixer to patch the offending files, one file at a time.
-            _apply_fixer_round(bb, preset_id, final_errors)
+            _apply_fixer_round(bb, preset_id, final_errors, files_dir=files_dir)
         # else: will fall through to ship_with_debt below
 
     if final_errors:
@@ -227,7 +254,13 @@ def _run_validate(bb: Blackboard, preset_id: str, *, with_trial: bool,
     schemas.update_phase_status(bb, phase="validate", status="done")
 
 
-def _apply_fixer_round(bb: Blackboard, preset_id: str, errors: list) -> None:
+def _apply_fixer_round(
+    bb: Blackboard,
+    preset_id: str,
+    errors: list,
+    *,
+    files_dir: Path | None = None,
+) -> None:
     """Group errors by file, invoke GenreFixer once per file.
 
     Fixer silently skips files that can't be resolved from `file` metadata
@@ -248,7 +281,13 @@ def _apply_fixer_round(bb: Blackboard, preset_id: str, errors: list) -> None:
     fixer = GenreFixer()
     for fname, file_issues in by_file.items():
         try:
-            fixer.run(bb, genre_id=preset_id, file_name=fname, issues=file_issues)
+            fixer.run(
+                bb,
+                genre_id=preset_id,
+                file_name=fname,
+                issues=file_issues,
+                files_dir=files_dir,
+            )
         except Exception as e:
             bb.append_jsonl("genre_issues.jsonl", {
                 "severity": "warning",
@@ -258,12 +297,27 @@ def _apply_fixer_round(bb: Blackboard, preset_id: str, errors: list) -> None:
             })
 
 
-def _run_setting_lint(bb: Blackboard, preset_id: str):
-    """Call setting_lint.lint_genre and translate its LintReport to genre_issues."""
+def _run_setting_lint(
+    bb: Blackboard,
+    preset_id: str,
+    *,
+    files_dir: Path | None = None,
+):
+    """Call setting_lint and translate its LintReport to genre_issues.
+
+    If ``files_dir`` points at ``projects/<book_id>/``, we route to
+    ``lint_project(book_id)`` instead of ``lint_preset(preset_id)``. Otherwise
+    the legacy preset-centric path applies.
+    """
     from src.tools import setting_lint
 
     try:
-        report = setting_lint.lint_genre(preset_id)
+        if files_dir is not None:
+            # Detect whether the directory lives under PROJECTS_DIR — if so,
+            # lint as a project; otherwise treat it as a preset-shaped directory.
+            report = _lint_scope(files_dir, preset_id)
+        else:
+            report = setting_lint.lint_genre(preset_id)
     except Exception as e:
         bb.append_jsonl("genre_issues.jsonl", {
             "severity": "warning",
@@ -283,6 +337,23 @@ def _run_setting_lint(bb: Blackboard, preset_id: str):
             "genre_id": preset_id,
             "source": "setting_lint",
         })
+
+
+def _lint_scope(files_dir: Path, scope_id: str):
+    """Dispatch lint_project / lint_preset based on where ``files_dir`` lives.
+
+    Falls back to ``lint_preset(scope_id)`` if the directory can't be mapped
+    to a known PROJECTS_DIR entry.
+    """
+    from src.tools import setting_lint
+
+    try:
+        rel = files_dir.resolve().relative_to(config.PROJECTS_DIR.resolve())
+        # rel.parts[0] is the book_id
+        book_id = rel.parts[0] if rel.parts else scope_id
+        return setting_lint.lint_project(book_id)
+    except (ValueError, IndexError):
+        return setting_lint.lint_preset(scope_id)
 
 
 def fill_preset(preset_id: str) -> dict:

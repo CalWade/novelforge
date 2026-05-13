@@ -131,15 +131,25 @@ class GenreValidator(BaseAgent):
     # -------------------------------------------------------------------------
     # Tier-1: deterministic deny-phrase regex scan (no LLM)
     # -------------------------------------------------------------------------
-    def _tier1_deny_scan(self, genre_id: str) -> list[dict]:
+    def _tier1_deny_scan(
+        self,
+        *,
+        files_dir: Path,
+        scope_id: str,
+    ) -> list[dict]:
         """Regex-scan the genre pack files for any deny-phrase hit.
+
+        Arguments:
+            files_dir: the directory holding era.md / writing-style-extra.md /
+                iron-laws-extra.md. Callers pass either ``presets/<id>/`` or
+                ``projects/<id>/`` — both are equally valid scopes.
+            scope_id: identifier (preset_id or book_id) used only to tag
+                issues in the log; it never drives the filesystem path.
 
         Returns a list of issue dicts (severity='warning' — Tier-1 never
         raises an error, it only flags style risk).
         """
-        from src import config
-
-        genre_dir = config.PRESETS_DIR / genre_id
+        genre_dir = files_dir
         files_to_scan = (
             "era.md",
             "writing-style-extra.md",
@@ -203,9 +213,18 @@ class GenreValidator(BaseAgent):
     # -------------------------------------------------------------------------
     def run(self, bb: Blackboard, **kwargs) -> str:
         genre_id: str = kwargs["genre_id"]
+        # Optional: when caller supplies an explicit files_dir (e.g. a project
+        # directory or any scratch preset dir), we scan that. Otherwise we
+        # fall back to PRESETS_DIR / genre_id for backward compatibility with
+        # audit_preset / run_phase.
+        files_dir: Path | None = kwargs.get("files_dir")
+        if files_dir is None:
+            from src import config
+
+            files_dir = config.PRESETS_DIR / genre_id
 
         # Tier-1: deterministic deny-phrase scan (no LLM)
-        tier1_issues = self._tier1_deny_scan(genre_id)
+        tier1_issues = self._tier1_deny_scan(files_dir=files_dir, scope_id=genre_id)
         for issue in tier1_issues:
             issue["genre_id"] = genre_id
             bb.append_jsonl("genre_issues.jsonl", issue)
@@ -227,7 +246,7 @@ class GenreValidator(BaseAgent):
         ]
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(auditors)) as ex:
             futures = {
-                ex.submit(a.run, bb, genre_id=genre_id): a.name
+                ex.submit(a.run, bb, genre_id=genre_id, files_dir=files_dir): a.name
                 for a in auditors
             }
             for fut in concurrent.futures.as_completed(futures):

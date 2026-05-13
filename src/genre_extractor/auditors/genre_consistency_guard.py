@@ -69,19 +69,34 @@ class GenreConsistencyGuard(BaseAgent):
 
     SYSTEM_PROMPT = SYSTEM_PROMPT
 
-    def _build_prompts(self, bb: Blackboard, *, genre_id: str, **_):
+    def _build_prompts(
+        self,
+        bb: Blackboard,
+        *,
+        genre_id: str,
+        files_dir=None,
+        **_,
+    ):
+        from pathlib import Path
+
         from src import config
 
-        genre_dir = config.PRESETS_DIR / genre_id
+        genre_dir = Path(files_dir) if files_dir is not None else (config.PRESETS_DIR / genre_id)
         blocks: list[str] = []
         inputs_read: list[str] = []
+
+        def _rel_label(fp) -> str:
+            try:
+                return str(fp.relative_to(config.PROJECT_ROOT))
+            except ValueError:
+                return f"{genre_dir.name}/{fp.name}"
 
         for fname in ("iron-laws-extra.md", "era.md"):
             fp = genre_dir / fname
             if fp.exists():
                 text = fp.read_text(encoding="utf-8")
                 blocks.append(f"<file name=\"{fname}\">\n{text[:4000]}\n</file>")
-                inputs_read.append(f"genres/{genre_id}/{fname}")
+                inputs_read.append(_rel_label(fp))
 
         # resource_schema.yaml is OPTIONAL — only include if present
         rs_path = genre_dir / "resource_schema.yaml"
@@ -90,7 +105,7 @@ class GenreConsistencyGuard(BaseAgent):
             blocks.append(
                 f"<file name=\"resource_schema.yaml\">\n{rs_text[:3000]}\n</file>"
             )
-            inputs_read.append(f"genres/{genre_id}/resource_schema.yaml")
+            inputs_read.append(_rel_label(rs_path))
             rs_reminder = (
                 "\n注意：resource_schema.yaml 的 baseline_scale 必须能从 "
                 "iron-laws-extra.md + era.md 的描述推出。若推不出，报 warning。\n"

@@ -68,15 +68,28 @@ class GenreFactChecker(BaseAgent):
 
     SYSTEM_PROMPT = SYSTEM_PROMPT  # exposed for import-time inspection
 
-    def _build_prompts(self, bb: Blackboard, *, genre_id: str, **_):
+    def _build_prompts(
+        self,
+        bb: Blackboard,
+        *,
+        genre_id: str,
+        files_dir=None,
+        **_,
+    ):
+        from pathlib import Path
+
         from src import config
 
-        genre_dir = config.PRESETS_DIR / genre_id
+        genre_dir = Path(files_dir) if files_dir is not None else (config.PRESETS_DIR / genre_id)
         era_path = genre_dir / "era.md"
         inputs_read: list[str] = []
         if era_path.exists():
             era_text = era_path.read_text(encoding="utf-8")
-            inputs_read.append(f"genres/{genre_id}/era.md")
+            try:
+                rel = era_path.relative_to(config.PROJECT_ROOT)
+                inputs_read.append(str(rel))
+            except ValueError:
+                inputs_read.append(f"{genre_dir.name}/era.md")
         else:
             era_text = "(era.md 缺失)"
 

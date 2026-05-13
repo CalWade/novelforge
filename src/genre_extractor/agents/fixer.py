@@ -66,11 +66,14 @@ class GenreFixer(BaseAgent):
         genre_id: str,
         file_name: str,
         issues: list,
+        files_dir=None,
         **_,
     ):
+        from pathlib import Path
+
         from src import config
 
-        genre_dir = config.PRESETS_DIR / genre_id
+        genre_dir = Path(files_dir) if files_dir is not None else (config.PRESETS_DIR / genre_id)
         current = (genre_dir / file_name).read_text(encoding="utf-8")
 
         # Render issues with any 'quote' / 'suggestion' fields if present.
@@ -85,7 +88,12 @@ class GenreFixer(BaseAgent):
 
         issues_text = "\n".join(f"- {_fmt(i)}" for i in issues) or "（无）"
 
-        inputs_read = [f"genres/{genre_id}/{file_name}", "genre_issues.jsonl"]
+        try:
+            rel = (genre_dir / file_name).relative_to(config.PROJECT_ROOT)
+            input_label = str(rel)
+        except ValueError:
+            input_label = f"{genre_dir.name}/{file_name}"
+        inputs_read = [input_label, "genre_issues.jsonl"]
         user = (
             f"<target>\n"
             f"genre_id: {genre_id}\n"
@@ -105,8 +113,17 @@ class GenreFixer(BaseAgent):
         return SYSTEM_PROMPT, user, inputs_read
 
     def _handle_output(
-        self, bb: Blackboard, raw: str, *, genre_id: str, file_name: str, **_
+        self,
+        bb: Blackboard,
+        raw: str,
+        *,
+        genre_id: str,
+        file_name: str,
+        files_dir=None,
+        **_,
     ):
+        from pathlib import Path
+
         from src import config
 
         # Strip any accidentally-emitted markdown fences (defensive — prompt
@@ -119,6 +136,7 @@ class GenreFixer(BaseAgent):
                 text = text[: -len("```")]
             text = text.strip()
 
-        (config.PRESETS_DIR / genre_id / file_name).write_text(
+        genre_dir = Path(files_dir) if files_dir is not None else (config.PRESETS_DIR / genre_id)
+        (genre_dir / file_name).write_text(
             text + "\n", encoding="utf-8"
         )

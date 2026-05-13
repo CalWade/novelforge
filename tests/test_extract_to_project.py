@@ -32,7 +32,7 @@ def fake_repo(tmp_path: Path, monkeypatch):
 def test_extract_to_project_overwrites_genre_files(fake_repo, monkeypatch):
     from src.genre_extractor import to_project
 
-    def fake_run(bb, sources):
+    def fake_run(bb, sources, **_):
         return {
             "era": {"content": "# new era"},
             "writing_style_extra": {"content": "# new style"},
@@ -40,6 +40,9 @@ def test_extract_to_project_overwrites_genre_files(fake_repo, monkeypatch):
             "resource_schema": None,
         }
     monkeypatch.setattr(to_project, "_run_full_extraction_to_blueprint", fake_run)
+    # Neutralise Validator — real validator would rewrite AI-slop stubs.
+    from src.genre_extractor import pipeline
+    monkeypatch.setattr(pipeline, "_run_validate", lambda *a, **k: None)
 
     result = to_project.extract_to_project(book_id="mybook", sources=["a.txt"])
     book = fake_repo / "projects" / "mybook"
@@ -51,12 +54,14 @@ def test_extract_to_project_overwrites_genre_files(fake_repo, monkeypatch):
 def test_extract_to_project_backs_up_previous_files(fake_repo, monkeypatch):
     from src.genre_extractor import to_project
 
-    def fake_run(bb, sources):
+    def fake_run(bb, sources, **_):
         return {
             "era": {"content": "# new"}, "writing_style_extra": {"content": "s"},
             "iron_laws_extra": {"content": "l"}, "resource_schema": None,
         }
     monkeypatch.setattr(to_project, "_run_full_extraction_to_blueprint", fake_run)
+    from src.genre_extractor import pipeline
+    monkeypatch.setattr(pipeline, "_run_validate", lambda *a, **k: None)
 
     to_project.extract_to_project(book_id="mybook", sources=["a.txt"])
     backup_dir = fake_repo / "projects" / "mybook" / "state" / ".backup"
