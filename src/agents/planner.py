@@ -59,12 +59,19 @@ class Planner(BaseAgent):
         # feedback (reveal/payoff/reversal/status-change) within ch3.
         golden_three_block, golden_three_inputs = _collect_golden_three_hooks(bb, chapter)
 
+        # Sensory kit: optional lookup table of verbatim 5-sense phrases per
+        # location, mined from the project's own chapters. If absent we
+        # fall back to the legacy "LLM invents sensory_prompts from era.md"
+        # path — behaviour is 100% backward-compatible.
+        sensory_kit_block, sensory_kit_inputs = _read_sensory_kit(bb)
+
         inputs_read: list[str] = (
             ["state/outline.json", "state/setting.yaml"]
             + summary_inputs
             + status_card_inputs
             + pending_hooks_inputs
             + golden_three_inputs
+            + sensory_kit_inputs
         )
 
         system = (
@@ -76,6 +83,9 @@ class Planner(BaseAgent):
             "目的（推进主线/塑造人物/埋伏笔）、预估字数。\n"
             "3. 一章拆成 3-5 个 scene，总字数目标 ~3000 字。\n"
             "4. 每个 scene 必须提供至少 2 处『具体感官细节』的写作提示（视觉/听觉/触觉/气味/味觉）。\n"
+            "   **若 user prompt 里提供了『感官清单参考』，优先从本章 scene 对应 location 的\n"
+            "   清单里挑 2-3 条作为 sensory_prompts 起点**（保证不同章节对同一地点的描写词汇一致）；\n"
+            "   清单里没有的 location 才自己按 era.md 外推。\n"
             "5. 必须给出开篇钩子（opening_hook，≤30 字）和章末钩子（closing_hook，≤40 字）。\n"
             "6. 必须列出 3-5 个 landmines_to_avoid（写作时要回避的具体雷点）。\n"
             "7. 不编造大纲里没有的情节，但可以为大纲的 beats 补充细节与过渡。\n"
@@ -114,6 +124,7 @@ class Planner(BaseAgent):
             f"# 待回收伏笔池（优先安排回收旧钩子，不要只埋新坑）\n\n"
             f"{pending_hooks_text}\n\n"
             + golden_three_block
+            + sensory_kit_block
             + f"# 前情摘要（Context Reset，只有这一点上下文）\n\n{prior_summary_block}\n\n"
             f"# 输出 JSON 结构\n\n"
             "```json\n"
@@ -214,3 +225,62 @@ def _collect_golden_three_hooks(bb: Blackboard, chapter: int) -> tuple[str, list
         "**禁止**把整个前三章都当铺垫——本章不得只埋新坑不收旧账。\n\n",
         inputs,
     )
+
+
+def _read_sensory_kit(bb) -> tuple[str, list[str]]:
+    """Return (block_text, inputs_read) for the sensory kit lookup table.
+
+    era_sensory_kit.yaml is an optional per-project artifact produced by
+    SensoryKitMiner (src.genre_extractor.miners.sensory_kit). It maps
+    location → 5-sense verbatim phrases. When present we embed the whole
+    kit into the Planner's user prompt so it can pick from pre-approved
+    "port-flavoured" words instead of inventing sensory_prompts from scratch.
+
+    Absent → returns empty string + empty inputs; Planner's legacy path
+    (LLM invents from era.md) is fully preserved.
+    """
+    if not bb.exists("era_sensory_kit.yaml"):
+        return "", []
+    try:
+        kit = bb.read_yaml("era_sensory_kit.yaml") or {}
+    except Exception:
+        return "", []
+    if not isinstance(kit, dict):
+        # 损坏/非预期形态（如顶层 list）→ 静默降级
+        return "", []
+    locs = kit.get("locations") or {}
+    if not isinstance(locs, dict) or not locs:
+        return "", []
+
+    # Render as compact YAML-ish block keeping 5-sense labels in Chinese
+    # for LLM readability (the YAML file itself uses English keys).
+    label_map = {
+        "visual": "视觉",
+        "auditory": "听觉",
+        "olfactory": "嗅觉",
+        "tactile": "触觉",
+        "gustatory": "味觉",
+    }
+    lines: list[str] = []
+    for loc_name, senses in locs.items():
+        if not isinstance(senses, dict):
+            continue
+        lines.append(f"- **{loc_name}**")
+        for key, zh in label_map.items():
+            items = senses.get(key)
+            if not items:
+                continue
+            words = "、".join(str(x) for x in items[:5])
+            lines.append(f"  - {zh}: {words}")
+    if not lines:
+        return "", []
+
+    block = (
+        "# 感官清单参考（era_sensory_kit.yaml）\n\n"
+        "按 location 的五感样本词组。写 scenes[].sensory_prompts 时：\n"
+        "- 本 scene 的 location 命中下表 → 从对应五感里挑 2-3 条改写为 sensory_prompts；\n"
+        "- 未命中 → 沿用 era.md 外推的旧方式（保持行为）。\n"
+        "- 目的：让不同章节对同一地点的描写词汇一致，避免风格割裂。\n\n"
+        + "\n".join(lines) + "\n\n"
+    )
+    return block, ["state/era_sensory_kit.yaml"]

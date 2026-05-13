@@ -45,7 +45,14 @@ REQUIRED_PROJECT_FILES = (
     "writing-style-extra.md",
     "iron-laws-extra.md",
 )
-OPTIONAL_PROJECT_FILES = ("resource_schema.yaml",)
+OPTIONAL_PROJECT_FILES = (
+    "resource_schema.yaml",
+    # era_sensory_kit.yaml: 由 SensoryKitMiner 产出的按 location 五感清单，
+    # Planner 读取它改善 sensory_prompts 质量。可选文件——不存在时 Planner
+    # 行为退回到纯 LLM 外推（100% 向后兼容）。详见
+    # docs/superpowers/specs/genre-mining-v2-step1-sensory-kit.md
+    "era_sensory_kit.yaml",
+)
 
 
 # Identifiers must be filesystem-safe and cannot be used for path traversal.
@@ -290,6 +297,14 @@ def create_project(
             shutil.copy2(
                 preset_dir / "resource_schema.yaml",
                 project_dir / "resource_schema.yaml",
+            )
+        # Optional era_sensory_kit.yaml (Genre-mining v2 Step 1). Preset
+        # authors may curate one; otherwise作品激活后可跑 SensoryKitMiner
+        # 自动生成。Planner 不存在时走 LLM 外推（100% 向后兼容）。
+        if (preset_dir / "era_sensory_kit.yaml").exists():
+            shutil.copy2(
+                preset_dir / "era_sensory_kit.yaml",
+                project_dir / "era_sensory_kit.yaml",
             )
     elif blank_genre or from_extract:
         # Lay down blank stubs first (so project is structurally complete even
