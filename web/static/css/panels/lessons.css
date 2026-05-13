@@ -1,0 +1,182 @@
+/* ---------------------------------------------------------
+   Right column: architecture lessons & pitch crosswalk.
+   Houses the shared .panel-hint (also used by inspector).
+   Original: main.css lines 875-1050.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   LESSONS PANEL (architecture story · pitch crosswalk)
+   ========================================================= */
+/* TODO #15: unified .panel-hint (replaces .inspector-hint + .lessons-hint) */
+.panel-hint {
+  padding: 10px 14px;
+  margin: 10px 10px 6px;
+  border: 1px solid rgba(255, 180, 84, 0.25);
+  background: rgba(255, 180, 84, 0.05);
+  border-radius: var(--radius);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.panel-hint strong {
+  color: var(--amber);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.panel-hint span { color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
+
+.lessons-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px 40px;
+}
+
+.lesson-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 16px 14px;
+  margin: 8px 0 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.lesson-card:hover {
+  border-color: var(--amber-dim);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+.lesson-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--amber) 0%, transparent 100%);
+  border-radius: 2px;
+  opacity: 0.4;
+}
+
+.lesson-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.lesson-n {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.lesson-attr {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.attr-anthropic { background: rgba(232, 122, 83, 0.12); color: #e87a53; border: 1px solid rgba(232, 122, 83, 0.3); }
+.attr-cognition { background: rgba(155, 110, 255, 0.12); color: #b794ff; border: 1px solid rgba(155, 110, 255, 0.3); }
+.attr-openai    { background: rgba(63, 185, 80, 0.12);  color: #62d97a; border: 1px solid rgba(63, 185, 80, 0.3); }
+
+.lesson-title {
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 4px 0 6px;
+  color: var(--text);
+  line-height: 1.3;
+}
+.lesson-principle {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+  line-height: 1.55;
+}
+
+.lesson-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 10px 0 6px;
+  opacity: 0.85;
+}
+.lesson-impl {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  padding-left: 16px;
+  margin: 0 0 4px;
+}
+.lesson-impl li { margin-bottom: 2px; }
+.lesson-impl li::marker { color: var(--amber-dim); }
+
+.lesson-pointers {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.lesson-pointers li { margin-bottom: 4px; }
+.ptr-link {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  transition: background 120ms ease, border-color 120ms ease;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.ptr-link:hover {
+  background: rgba(255, 180, 84, 0.08);
+  border-color: rgba(255, 180, 84, 0.3);
+  text-decoration: none;
+}
+.ptr-link code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--amber);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ptr-desc {
+  color: var(--text-soft);
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ptr-arrow {
+  color: var(--amber);
+  opacity: 0.55;
+  font-size: 10px;
+  flex-shrink: 0;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.ptr-link:hover .ptr-arrow {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
+/* (Responsive rules moved to end of file — see "Responsive" block.) */
+

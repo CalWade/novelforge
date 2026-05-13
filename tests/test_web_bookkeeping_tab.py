@@ -19,7 +19,20 @@ from tests.conftest import read_web_main_js
 
 REPO = Path(__file__).resolve().parent.parent
 TEMPLATE = REPO / "web" / "templates" / "index.html"
-MAIN_CSS = REPO / "web" / "static" / "main.css"
+# P2 #14: main.css was split into layered files under web/static/css/.
+# Concatenate all of them (plus any residual main.css manifest) so
+# content-based assertions still work across the split.
+_CSS_ROOT = REPO / "web" / "static"
+
+
+def _all_css_text() -> str:
+    parts: list[str] = []
+    main = _CSS_ROOT / "main.css"
+    if main.exists():
+        parts.append(main.read_text(encoding="utf-8"))
+    for p in sorted((_CSS_ROOT / "css").rglob("*.css")):
+        parts.append(p.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 # ---------- template ----------
@@ -100,22 +113,27 @@ def test_main_js_updates_bookkeeping_badge():
 # ---------- CSS ----------
 
 def test_main_css_has_bookkeeping_selectors():
-    css = MAIN_CSS.read_text(encoding="utf-8")
+    css = _all_css_text()
     for sel in (".bookkeeping-view", ".bk-card", ".bk-card-head", ".bk-card-body"):
         assert sel in css, f"main.css missing selector {sel!r}"
 
 
 def test_main_css_bookkeeping_has_responsive_fallback():
     """At narrow viewports the 3-column grid must collapse to 1 column."""
-    css = MAIN_CSS.read_text(encoding="utf-8")
+    css = _all_css_text()
     # Rough check: there is a media query that mentions bk-grid OR a single-column
     # redefinition of bk-grid.
     assert "bk-grid" in css
-    # Ensure responsive breakpoint exists somewhere in the file (we added 900px).
-    assert "max-width: 900px" in css or "max-width:900px" in css
+    # P2 #13: responsive breakpoints unified to 1440 / 1280 / 1024. The
+    # bookkeeping 3-col→1-col fold used to live at @900; it's now folded
+    # into the ≤1024 block (nearest standard breakpoint).
+    assert "max-width: 1024px" in css or "max-width:1024px" in css
+    # And bk-grid must actually switch to 1fr somewhere under a media query.
+    assert ".bk-grid { grid-template-columns: 1fr" in css or \
+           ".bk-grid{grid-template-columns:1fr" in css
 
 
 def test_main_css_bookkeeping_has_disabled_state():
     """Ledger card needs a visually-distinct disabled state for opt-out books."""
-    css = MAIN_CSS.read_text(encoding="utf-8")
+    css = _all_css_text()
     assert ".bk-card.is-disabled" in css or ".is-disabled" in css

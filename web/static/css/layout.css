@@ -1,0 +1,201 @@
+/* ---------------------------------------------------------
+   Top-level page structure: topbar (legacy + stacked), brand,
+   main grid columns, and the header-embedded run-panel.
+   Original: main.css lines 71-142 (topbar+brand), 207-245 (grid), 1158-1239 (run-panel).
+   --------------------------------------------------------- */
+
+/* =========================================================
+   TOP BAR
+   Lane B Task #11: two-row stacked layout. Row 1 = identity +
+   nav; row 2 = operational pills + run panel + override. Each
+   row is its own 3-column grid (auto | 1fr | auto) so the
+   center spacer absorbs extra width and the edges stay pinned.
+
+   Legacy `.topbar` (single grid row) is preserved as the base so
+   subpages that have not been migrated still render correctly;
+   the stacked variant opts in via `.topbar-stacked`.
+   ========================================================= */
+.topbar {
+  position: relative; z-index: 5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #0d131c 0%, #0a0e14 100%);
+}
+
+.topbar-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 20px 12px;
+}
+.topbar-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+}
+/* Row 2 sits slightly inset visually — a subtle deepening of the
+   gradient cues "this is the working surface", without introducing
+   a new color token. */
+.topbar-row-ops {
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+.topbar-spacer { min-width: 0; }
+.actions-nav,
+.actions-ops { justify-content: flex-end; }
+.actions-ops { gap: 10px; }
+
+.brand {
+  display: flex; align-items: center; gap: 12px;
+}
+.brand-mark {
+  font-family: var(--font-display);
+  font-size: 28px;
+  color: var(--amber);
+  line-height: 1;
+  text-shadow: 0 0 24px rgba(255, 180, 84, 0.5);
+}
+.brand-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  color: var(--text);
+}
+.brand-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-soft);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+
+
+/* =========================================================
+   GRID
+   ========================================================= */
+.grid {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 260px 1fr 420px;
+  /* Task #11: two-row header is ~96px tall (row-nav ~48 + row-ops
+     ~44 + borders). Previous calc assumed the old 64px single row
+     and clipped the bottom of the right column by ~32px. */
+  height: calc(100vh - 96px);
+  min-height: 0;
+}
+.col {
+  display: flex; flex-direction: column;
+  min-height: 0;
+  background: var(--ink-2);
+}
+.col-left   { border-right: 1px solid var(--line); }
+.col-right  { border-left:  1px solid var(--line); background: #0c111a; }
+
+.col-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.col-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+}
+.col-hint {
+  font-size: 10.5px;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+}
+
+
+/* =========================================================
+   RUN PANEL (header-embedded pipeline dispatch)
+   Mode dropdown + contextual chapter/range input + run/abort.
+   Sits flush with other header actions, shares .btn vocabulary.
+   ========================================================= */
+.run-panel {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.run-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+.run-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-soft);
+}
+.run-select,
+.run-input {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.run-select:focus,
+.run-input:focus {
+  outline: none;
+  border-color: var(--amber-dim);
+  background: var(--panel-2);
+}
+.run-input { width: 56px; text-align: center; }
+.run-input-range { width: 72px; }
+.run-select {
+  padding-right: 20px;
+  /* native chevron preserved; restyle conservatively */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-soft) 50%),
+                    linear-gradient(-45deg, transparent 50%, var(--text-soft) 50%);
+  background-position: calc(100% - 10px) 50%, calc(100% - 5px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.run-field[hidden] { display: none !important; }
+
+.btn-icon {
+  padding: 7px 10px;
+  min-width: 32px;
+  justify-content: center;
+}
+.btn-project {
+  max-width: 220px;
+}
+.btn-project #btn-project-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 170px;
+}
+
+/* Lane B Task #11: the old 1200px rule used to hide .pills to
+   keep the single-row topbar under one line. With the stacked
+   layout pills live on their own row and stay visible.
+   (Responsive rules moved to end of file.) */
+

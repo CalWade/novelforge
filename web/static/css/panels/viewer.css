@@ -1,0 +1,103 @@
+/* ---------------------------------------------------------
+   Center column: markdown/source viewer for chapter content.
+   Original: main.css lines 403-500.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   CENTER VIEWER
+   ========================================================= */
+.viewer {
+  padding: 28px 40px 60px;
+  /* TODO #17: cap on wider screens, breathe on narrow ones (no edge-cling) */
+  max-width: min(780px, 100% - 48px);
+  margin: 0 auto;
+  color: var(--text);
+}
+.viewer h1, .viewer h2, .viewer h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-top: 1.5em;
+}
+.viewer h1 {
+  font-size: 28px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  color: var(--amber);
+}
+.viewer h2 { font-size: 22px; }
+.viewer h3 { font-size: 17px; color: var(--cyan); }
+.viewer p { margin: 0 0 1em; line-height: 1.8; font-size: 15px; }
+.viewer em { color: var(--text-dim); font-style: italic; }
+/* TODO #5: strong uses text+weight only; amber reserved for system signals */
+.viewer strong { color: var(--text); font-weight: 600; }
+.viewer blockquote {
+  border-left: 3px solid var(--amber-dim);
+  margin: 1em 0;
+  padding: 4px 16px;
+  color: var(--text-dim);
+  background: rgba(255, 180, 84, 0.04);
+}
+.viewer code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--cyan);
+}
+.viewer pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.viewer pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.viewer ul, .viewer ol { padding-left: 24px; }
+.viewer li { margin: 0.25em 0; }
+.viewer hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+.viewer table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 13px;
+}
+.viewer th, .viewer td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+}
+.viewer th { background: var(--panel); font-weight: 600; }
+
+.viewer-source {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+  padding: 24px 32px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: none;
+  margin: 0;
+}
+.viewer-source .src-key    { color: var(--cyan); }
+.viewer-source .src-string { color: var(--amber); }
+.viewer-source .src-num    { color: var(--ag-generator); }
+.viewer-source .src-null   { color: var(--ag-summarizer); }
+.viewer-source .src-bool   { color: var(--ag-ai_slop_guard); }
+

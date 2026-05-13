@@ -1,0 +1,50 @@
+<!-- =========================================================
+     SETTINGS (.env editor)
+     ========================================================= -->
+<dialog id="dlg-settings" class="dlg">
+  <div class="dlg-header">
+    <h2 class="dlg-title">设置 · .env</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <form id="settings-form" class="onb-form">
+      <div class="settings-group">
+        <div class="settings-group-label">DeepSeek · 所有创作 Agent 的主引擎</div>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_API_KEY</span>
+          <input id="st-deepseek-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
+          <span class="form-hint-inline" data-hint-for="st-deepseek-key"></span>
+        </label>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_BASE_URL</span>
+          <input id="st-deepseek-base" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_MODEL</span>
+          <input id="st-deepseek-model" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+      </div>
+      <div class="settings-group">
+        <div class="settings-group-label">Perplexity · 可选，仅 FactChecker 会用</div>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_API_KEY</span>
+          <input id="st-perplexity-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
+          <span class="form-hint-inline" data-hint-for="st-perplexity-key"></span>
+        </label>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_BASE_URL</span>
+          <input id="st-perplexity-base" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+        <label class="form-field">
+          <span class="form-label">PERPLEXITY_MODEL</span>
+          <input id="st-perplexity-model" class="form-input form-input-mono" type="text" spellcheck="false" />
+        </label>
+      </div>
+      <div class="form-error" id="st-error" hidden></div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="button" class="btn btn-ghost" data-close-dialog>取消</button>
+      </div>
+    </form>
+  </div>
+</dialog>

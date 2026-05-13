@@ -1,0 +1,79 @@
+/* ---------------------------------------------------------
+   Shared form controls used by onboarding, settings, and wizard dialogs.
+   Original: main.css lines 1345-1418.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   FORM CONTROLS (shared by onboarding / settings / wizard)
+   ========================================================= */
+.onb-form { display: flex; flex-direction: column; gap: 14px; }
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-field-optional { opacity: 0.88; }
+.form-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.form-required { color: var(--amber); font-weight: 600; }
+.form-hint {
+  font-size: 10.5px;
+  color: var(--text-soft);
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-ui);
+  font-weight: 400;
+}
+.form-hint-inline {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-soft);
+  margin-top: 2px;
+}
+.form-input {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  transition: border-color 0.15s, background 0.15s;
+  width: 100%;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--amber-dim);
+  background: var(--panel-2);
+}
+.form-input-mono { font-family: var(--font-mono); font-size: 13px; }
+.form-input-password { font-family: var(--font-mono); letter-spacing: 0.04em; }
+
+.form-error {
+  padding: 8px 12px;
+  border: 1px solid var(--red);
+  background: rgba(248, 81, 73, 0.08);
+  color: var(--red-soft);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.form-error[hidden] { display: none; }
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+

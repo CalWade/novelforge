@@ -1,0 +1,46 @@
+/* ---------------------------------------------------------
+   Design tokens — CSS variables only.
+   Original: main.css lines 1-39.
+   Nothing else belongs here. If you need a new color/size token,
+   add it to :root below and reference it from its consumer file.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   Novelforge · 小说锻造厂 — demo dashboard
+   Vision: an "archive console". Dark ink, warm amber accent,
+   hairline borders, Fraunces display for "档案" gravitas,
+   JetBrains Mono for the LLM receipts.
+   ========================================================= */
+
+:root {
+  --ink:        #0a0e14;
+  --ink-2:      #0f141c;
+  --panel:      #141922;
+  --panel-2:    #1a2030;
+  --line:       #232a36;
+  --line-soft:  #1c2230;
+  --text:       #e6edf3;
+  --text-dim:   #9aa5b5;
+  --text-soft:  #7a8593; /* TODO #6: bumped from #64707f for WCAG AA on --ink */
+  --amber:      #ffb454;
+  --amber-dim:  #d48a2a;
+  --cyan:       #7fdbff;
+  --green:      #62d97a;
+  --red:        #f85149;
+  --red-soft:   #ff8a80;
+
+  /* agent palette */
+  --ag-planner:         #5aa7ff;
+  --ag-generator:       #62d97a;
+  --ag-evaluator:       #f85149;
+  --ag-fixer:           #ffb454;
+  --ag-summarizer:      #9aa5b5;
+  --ag-ai_slop_guard:   #b78dff;
+  --ag-character_guard: #3dd5c8;
+
+  --radius: 7px;
+  --radius-sm: 4px;
+  --font-ui:    'Inter Tight', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-display: 'Fraunces', 'Times New Roman', serif;
+}

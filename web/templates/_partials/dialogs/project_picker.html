@@ -1,0 +1,19 @@
+<!-- =========================================================
+     PROJECT PICKER (dismissable; opened by header ◎ button)
+     ========================================================= -->
+<dialog id="dlg-project" class="dlg">
+  <div class="dlg-header">
+    <h2 class="dlg-title">切换作品</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="project-grid" id="pp-grid">
+      <div class="project-grid-loading">加载中…</div>
+    </div>
+    <div class="project-extra">
+      <button class="btn btn-ghost" id="pp-edit-sources">
+        <span class="btn-glyph">✎</span>编辑当前作品的源文件
+      </button>
+    </div>
+  </div>
+</dialog>

@@ -1,0 +1,47 @@
+<!-- =========================================================
+     ONBOARDING OVERLAY (fullscreen, blocking, only on first run)
+     Hidden by default; init() shows it when env or project is
+     missing. Two steps, rendered in the same container.
+     ========================================================= -->
+<div id="onboarding" class="onboarding" hidden aria-modal="true" role="dialog">
+  <div class="onboarding-card">
+    <div class="onboarding-mark">◐</div>
+    <div class="onboarding-brand">Novelforge · 小说锻造厂</div>
+
+    <!-- Step 1: API key -->
+    <div class="onb-step" data-step="key" hidden>
+      <div class="onb-step-n">步骤 1 / 2</div>
+      <h2 class="onb-title">先配一把钥匙</h2>
+      <p class="onb-sub">
+        所有 Agent 都通过 DeepSeek chat/completions 调用大模型。粘贴 API key 即可开始；
+        密钥只会写入项目根目录的 <code>.env</code>，服务器不会外传。
+      </p>
+      <form class="onb-form" id="onb-key-form">
+        <label class="form-field">
+          <span class="form-label">DEEPSEEK_API_KEY <span class="form-required">*</span></span>
+          <input id="onb-deepseek" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." required />
+        </label>
+        <label class="form-field form-field-optional">
+          <span class="form-label">PERPLEXITY_API_KEY <span class="form-hint">可选 · 仅在 Evaluator 命中事实核查时使用</span></span>
+          <input id="onb-perplexity" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="pplx-... （留空跳过）" />
+        </label>
+        <div class="form-error" id="onb-key-error" hidden></div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存并继续</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Step 2: choose project -->
+    <div class="onb-step" data-step="project" hidden>
+      <div class="onb-step-n">步骤 2 / 2</div>
+      <h2 class="onb-title">选一本书 · 或新建一本</h2>
+      <p class="onb-sub">
+        每本书独立维护大纲 / 人物 / 时间线；切换不会丢当前进度。
+      </p>
+      <div class="project-grid" id="onb-project-grid">
+        <div class="project-grid-loading">加载中…</div>
+      </div>
+    </div>
+  </div>
+</div>

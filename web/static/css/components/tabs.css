@@ -1,0 +1,68 @@
+/* ---------------------------------------------------------
+   Center-column tab strip (outline / chapter / verdict / logs / bookkeeping).
+   Original: main.css lines 340-402.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   TABS
+   ========================================================= */
+.tabs {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  background: #0d121a;
+  padding: 0 12px;
+  gap: 2px;
+}
+.tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 11px 14px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  transition: color 0.1s, border-color 0.1s;
+}
+.tab:hover { color: var(--text); }
+.tab-active {
+  color: var(--amber);
+  border-bottom-color: var(--amber);
+}
+.tab-spacer { flex: 1; }
+.tab-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: var(--red);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  letter-spacing: 0;
+  min-width: 18px;
+  text-align: center;
+}
+.tab-badge:empty { display: none; }
+.viewer-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-soft);
+  align-self: center;
+  padding-right: 12px;
+}
+
+.tab-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.tab-pane {
+  position: absolute; inset: 0;
+  display: none;
+  overflow-y: auto;
+}
+.tab-pane-active { display: block; }
+

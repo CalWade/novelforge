@@ -1,0 +1,36 @@
+/* ---------------------------------------------------------
+   Transient toast notifications.
+   Original: main.css lines 832-862.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   TOAST
+   ========================================================= */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--panel);
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  max-width: 360px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.toast.is-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.is-error {
+  border-color: var(--red);
+  color: var(--red-soft);
+}
+

@@ -8,6 +8,13 @@ Phase 4 · Task 4.7 — verify the index page exposes:
 
 After P1-17: main.js was split into ES modules; read_web_main_js() from
 conftest.py concatenates them for content-based assertions.
+
+After P2-10: the 6 dialog blocks were split into
+``web/templates/_partials/dialogs/*.html`` partials; assertions that check
+for markers *inside* those dialogs now render the page through the Flask
+test client and inspect the final HTML. The header-only marker
+(``btn-extract-genre-override``) lives in ``index.html`` itself so the
+raw-file read still works for that one.
 """
 from __future__ import annotations
 
@@ -18,31 +25,41 @@ from tests.conftest import read_web_main_js
 REPO = Path(__file__).resolve().parent.parent
 
 
+def _rendered_index_html() -> str:
+    """Render index.html through Flask so included partials are expanded."""
+    from web.app import app
+    client = app.test_client()
+    resp = client.get("/")
+    assert resp.status_code == 200, f"GET / returned {resp.status_code}"
+    return resp.get_data(as_text=True)
+
+
 def test_index_html_has_wizard_4_steps():
-    text = (REPO / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+    html = _rendered_index_html()
     for step in (1, 2, 3, 4):
-        assert f'data-wizard-step="{step}"' in text, f"wizard step {step} marker missing"
+        assert f'data-wizard-step="{step}"' in html, f"wizard step {step} marker missing"
 
 
 def test_index_html_has_three_genre_starter_options():
-    text = (REPO / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+    html = _rendered_index_html()
     for marker in ('data-genre-starter="preset"',
                    'data-genre-starter="extract"',
                    'data-genre-starter="blank"'):
-        assert marker in text, f"genre-starter option {marker} missing"
+        assert marker in html, f"genre-starter option {marker} missing"
 
 
 def test_index_html_has_extract_genre_override_button():
+    # This one lives in index.html's header, not in a partial.
     text = (REPO / "web" / "templates" / "index.html").read_text(encoding="utf-8")
     assert 'id="btn-extract-genre-override"' in text
 
 
 def test_index_html_wizard_has_outline_and_characters_textareas():
-    text = (REPO / "web" / "templates" / "index.html").read_text(encoding="utf-8")
-    assert 'name="outline_synopsis"' in text
-    assert 'name="characters_brief"' in text
-    assert 'name="blank_outline"' in text
-    assert 'name="blank_characters"' in text
+    html = _rendered_index_html()
+    assert 'name="outline_synopsis"' in html
+    assert 'name="characters_brief"' in html
+    assert 'name="blank_outline"' in html
+    assert 'name="blank_characters"' in html
 
 
 def test_main_js_wires_wizard_and_override():

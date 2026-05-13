@@ -1,0 +1,29 @@
+<!-- =========================================================
+     SOURCE FILE EDITOR (standalone, opened from project picker)
+     ========================================================= -->
+<dialog id="dlg-sources" class="dlg dlg-wide">
+  <div class="dlg-header">
+    <h2 class="dlg-title">编辑源文件 · <span id="src-active-project" class="dlg-subtitle">—</span></h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="src-editor" data-scope="standalone">
+      <div class="src-tabs" role="tablist">
+        <button class="src-tab is-active" data-src="project.yaml">project.yaml</button>
+        <button class="src-tab" data-src="outline.json">outline.json</button>
+        <button class="src-tab" data-src="characters.yaml">characters.yaml</button>
+        <button class="src-tab" data-src="timeline.yaml">timeline.yaml</button>
+      </div>
+      <div class="src-hint">
+        纯文本编辑器 · 保存后 state/ 会自动重新同步（progress 保留）。
+        复杂编辑请直接打开对应文件 — 它们就在 <code>projects/&lt;id&gt;/</code>。
+      </div>
+      <textarea class="src-textarea" data-src-area rows="22" spellcheck="false"></textarea>
+      <div class="form-error" data-src-error hidden></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary" data-src-save>保存</button>
+        <button type="button" class="btn btn-ghost" data-close-dialog>关闭</button>
+      </div>
+    </div>
+  </div>
+</dialog>

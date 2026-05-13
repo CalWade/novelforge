@@ -1,0 +1,142 @@
+{% import "_macros/forms.html" as forms %}
+<!-- =========================================================
+     NEW PROJECT WIZARD (4-step, Phase 4 Task 4.7)
+       1) 基本信息
+       2) 题材起点 (preset / extract / blank)
+       3) 大纲起点 (synopsis / blank)
+       4) 角色起点 (brief / blank)
+     ========================================================= -->
+<dialog id="dlg-new-project" class="dlg dlg-wide">
+  <div class="dlg-header">
+    <h2 class="dlg-title">新建作品</h2>
+    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
+  </div>
+  <div class="dlg-body">
+    <form id="project-wizard-form" class="onb-form">
+
+      <!-- Step 1 · basics -->
+      <section data-wizard-step="1" class="wizard-pane is-active">
+        <div class="wizard-step-head">1/4 · 基本信息</div>
+        <label class="form-field">
+          <span class="form-label">作品 ID <span class="form-required">*</span>
+            <span class="form-hint">小写字母 / 数字 / 连字符 / 下划线，长度 ≤ 64</span>
+          </span>
+          <input name="id" class="form-input form-input-mono" type="text"
+                 pattern="^[a-z0-9_][a-z0-9_-]{0,63}$" placeholder="my-new-book" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">显示名 <span class="form-required">*</span></span>
+          <input name="display_name" class="form-input" type="text" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">主角姓名 <span class="form-required">*</span></span>
+          <input name="protagonist_name" class="form-input" type="text" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">目标章数 <span class="form-required">*</span></span>
+          <input name="chapter_count_target" class="form-input" type="number" min="1" value="50" required />
+        </label>
+        <div class="form-error" data-wizard-error="1" hidden></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" data-wizard-next="2">下一步 →</button>
+        </div>
+      </section>
+
+      <!-- Step 2 · genre starter (three options) -->
+      <section data-wizard-step="2" class="wizard-pane" hidden>
+        <div class="wizard-step-head">2/4 · 题材起点</div>
+        <div class="form-field">
+          <label class="wizard-radio">
+            <input type="radio" name="genre_starter" value="preset" data-genre-starter="preset" checked>
+            <span>从 preset 拷贝 <span class="form-hint">（最快；直接复用已有题材包）</span></span>
+          </label>
+          <label class="wizard-radio">
+            <input type="radio" name="genre_starter" value="extract" data-genre-starter="extract">
+            <span>从原著拆 <span class="form-hint">（调 LLM，慢；从小说素材拆题材）</span></span>
+          </label>
+          <label class="wizard-radio">
+            <input type="radio" name="genre_starter" value="blank" data-genre-starter="blank">
+            <span>最小脚手架（空壳） <span class="form-hint">（产出 TODO 占位，手填）</span></span>
+          </label>
+        </div>
+
+        <div data-genre-panel="preset">
+          <label class="form-field">
+            <span class="form-label">选择 preset：</span>
+            <select name="from_preset" id="select-from-preset" class="form-input">
+              <option value="" disabled selected>加载中…</option>
+            </select>
+          </label>
+        </div>
+        <div data-genre-panel="extract" hidden>
+          <div class="form-field">
+            <span class="form-label">从 novels/ 大池子勾选素材：</span>
+            <div id="novels-pool-checkboxes" class="wizard-checkbox-pool">
+              <span class="form-hint">加载中…</span>
+            </div>
+          </div>
+          <label class="wizard-radio">
+            <input type="checkbox" name="extract_with_trial">
+            <span>跑 3 章试验书 <span class="form-hint">（慢；验证题材包可用性）</span></span>
+          </label>
+        </div>
+        <div data-genre-panel="blank" hidden>
+          <p class="form-hint">将产出 4 份 TODO 空壳，等你手填后 bootstrap。</p>
+        </div>
+
+        <div class="form-error" data-wizard-error="2" hidden></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-wizard-prev="1">← 上一步</button>
+          <button type="button" class="btn btn-primary" data-wizard-next="3">下一步 →</button>
+        </div>
+      </section>
+
+      <!-- Step 3 · outline starter -->
+      <section data-wizard-step="3" class="wizard-pane" hidden>
+        <div class="wizard-step-head">3/4 · 大纲起点</div>
+        <label class="form-field">
+          <span class="form-label">粘贴故事梗概 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
+          <textarea name="outline_synopsis" class="form-input" rows="6"
+                    placeholder="主角的动机、冲突、转折…"></textarea>
+        </label>
+        <label class="wizard-radio">
+          <input type="checkbox" name="blank_outline">
+          <span>跳过，产出空壳 outline</span>
+        </label>
+        <div class="form-error" data-wizard-error="3" hidden></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-wizard-prev="2">← 上一步</button>
+          <button type="button" class="btn btn-primary" data-wizard-next="4">下一步 →</button>
+        </div>
+      </section>
+
+      <!-- Step 4 · characters starter -->
+      <section data-wizard-step="4" class="wizard-pane" hidden>
+        <div class="wizard-step-head">4/4 · 角色起点</div>
+        <label class="form-field">
+          <span class="form-label">粘贴人物简介 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
+          <textarea name="characters_brief" class="form-input" rows="6"
+                    placeholder="主角身份、配角列表、关系网…"></textarea>
+        </label>
+        <label class="wizard-radio">
+          <input type="checkbox" name="blank_characters">
+          <span>跳过，产出只含主角的空壳</span>
+        </label>
+        <div class="form-error" data-wizard-error="4" hidden></div>
+        <div class="wizard-status" id="np-create-status" hidden>
+          {{ forms.phase_timeline() }}
+          <div class="wizard-status-row">
+            <div class="wizard-status-mark">◐</div>
+            <div class="wizard-status-text">提交中…</div>
+            <button type="button" class="btn btn-danger btn-sm" id="np-btn-abort" hidden>⏹ 中断</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" data-wizard-prev="3">← 上一步</button>
+          <button type="submit" class="btn btn-primary" id="btn-wizard-submit">创建作品</button>
+        </div>
+      </section>
+
+    </form>
+  </div>
+</dialog>

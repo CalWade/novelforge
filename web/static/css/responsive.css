@@ -1,0 +1,58 @@
+/* ---------------------------------------------------------
+   All @media queries in one place. Breakpoints unified to 1280 / 1024
+   plus prefers-reduced-motion.
+   Original: main.css lines 2163-2214.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   Responsive — 断点统一为 1440 / 1280 / 1024
+   ---------------------------------------------------------
+   只收拢三个标准断点。原先散落各处的 @media（1280 / 1024 /
+   900 / 640）全部迁移到这里；900 向上取整到 1024，640 保留
+   在 <1024 档内（phase-timeline 作为小屏专供）。
+   1440+（大桌面）：不需要覆写，基线样式即是大屏设计。
+   1280（笔记本）：grid 轻微收紧 + topbar 紧凑化。
+   1024（小笔记本 / iPad 横屏）：grid 再收 + 二级面板让位。
+   <1024（iPad 竖屏 / 手机）：三栏堆栈 + 卡片降格为单列，
+       不弹"请用桌面端"提示，保留可用性（见 commit note）。
+   ========================================================= */
+
+/* ---------- 1280px：笔记本宽度收紧 ---------- */
+@media (max-width: 1280px) {
+  /* 主三栏 grid 收窄 + viewer 横向留白收回 */
+  .grid { grid-template-columns: 220px 1fr 380px; }
+  .viewer { padding: 24px 24px 40px; }
+  /* 顶栏两行叠放时留白也收一档 */
+  .topbar-stacked { padding: 8px 14px 10px; }
+  .topbar-row { gap: 12px; }
+}
+
+/* ---------- 1024px：小笔记本 / iPad 横屏 ---------- */
+@media (max-width: 1024px) {
+  /* 主 grid 再收一档（右栏仍在，只是更窄） */
+  .grid { grid-template-columns: 200px 1fr 340px; }
+  /* run-panel 允许换行；btn-project 保持可见（Lane B Task #11） */
+  .run-panel { flex-wrap: wrap; max-width: 100%; }
+  /* bookkeeping 三卡片从 3 列折成 1 列（原 @900 规则上移到 1024） */
+  .bk-grid { grid-template-columns: 1fr; }
+  .bk-card { min-height: 260px; }
+  .bookkeeping-view { padding: 14px 14px 30px; }
+  /* wizard 阶段时间线从 4 列折成 2×2（原 @640 规则上移到 1024；
+     在笔记本窄屏下 4 个小卡片也确实更拥挤，顺势折叠更清爽） */
+  .phase-timeline-compact { grid-template-columns: 1fr 1fr; }
+  /* 字号在 1024 以下启用 clamp，保证平板竖屏可读 */
+  body { font-size: clamp(13px, 1.1vw, 14px); }
+}
+
+/* ---------- A11y：减少动效（保留在末尾作为独立维度） ---------- */
+@media (prefers-reduced-motion: reduce) {
+  /* TODO #8: global a11y sweep — neutralize every animation/transition */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .loading-mark { animation: none; }
+  .loading-bar-fill { animation: none; width: 100%; opacity: 0.6; }
+  .loading-overlay { animation: none; }
+}

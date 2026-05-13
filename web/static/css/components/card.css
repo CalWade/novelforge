@@ -1,0 +1,117 @@
+/* ---------------------------------------------------------
+   Project / preset picker cards (grid of selectable book+preset tiles).
+   NOTE: .bk-card (bookkeeping), .insp-card (inspector), and
+   .lesson-card (lessons panel) each live in their owning panel file.
+   Original: main.css lines 1419-1528.
+   --------------------------------------------------------- */
+
+/* =========================================================
+   PROJECT GRID (cards for switch/pick)
+   ========================================================= */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.project-grid-loading {
+  grid-column: 1 / -1;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.project-card {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 14px 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+  min-height: 110px;
+  font-family: inherit;
+  color: inherit;
+}
+.project-card:hover {
+  border-color: var(--amber-dim);
+  background: var(--panel);
+  transform: translateY(-1px);
+}
+.project-card.is-active {
+  border-color: var(--amber);
+  background: linear-gradient(180deg, rgba(255, 180, 84, 0.08), rgba(255, 180, 84, 0.02));
+}
+.project-card-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.project-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.project-card-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+.project-card-tag.is-active { color: var(--amber); border-color: var(--amber-dim); background: rgba(255, 180, 84, 0.1); }
+.project-card-tag.is-stateful { color: var(--green); border-color: rgba(98, 217, 122, 0.3); background: rgba(98, 217, 122, 0.08); }
+.project-card-tag.is-uninit   { color: var(--text-soft); }
+.project-card-id {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-soft);
+  word-break: break-all;
+  margin-top: auto;
+}
+
+.project-card-new {
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 110px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+.project-card-new:hover {
+  border-style: solid;
+  color: var(--amber);
+  background: rgba(255, 180, 84, 0.04);
+}
+.project-card-new-glyph {
+  display: block;
+  font-size: 22px;
+  color: var(--amber);
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.project-extra {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  gap: 10px;
+}
+

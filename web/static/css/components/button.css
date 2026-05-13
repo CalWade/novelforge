@@ -1,0 +1,38 @@
+/* ---------------------------------------------------------
+   Button vocabulary — .btn, .btn-primary, .btn-ghost. Used by topbar,
+   dialogs, wizard, settings — anywhere a clickable action shows up.
+   Original: main.css lines 175-206.
+   --------------------------------------------------------- */
+
+/* buttons */
+.actions { display: flex; gap: 8px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  letter-spacing: 0.005em;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--amber-dim);
+  background: var(--panel-2);
+  color: var(--amber);
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-glyph { font-size: 10px; opacity: 0.8; }
+.btn-primary {
+  background: linear-gradient(180deg, rgba(255, 180, 84, 0.15), rgba(255, 180, 84, 0.06));
+  border-color: var(--amber-dim);
+  color: var(--amber);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(255, 180, 84, 0.25), rgba(255, 180, 84, 0.1));
+  color: #fff;
+}
+.btn-ghost { background: transparent; }
+

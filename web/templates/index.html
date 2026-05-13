@@ -10,7 +10,30 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}" />
+<!-- CSS split into layered files (see web/static/css/).
+     Order matters — matches the original main.css source order, so
+     cascade semantics are preserved. Do NOT reorder without checking
+     the mapping in the Git history of main.css. -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/pill.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/button.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/tree.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/tabs.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/viewer.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/placeholder.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/debt.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/inspector.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/toast.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/lessons.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/overlays.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/form.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/card.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/dialog.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/onboarding-wizard.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/panels/bookkeeping.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}" />
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
@@ -278,334 +301,16 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<!-- =========================================================
-     ONBOARDING OVERLAY (fullscreen, blocking, only on first run)
-     Hidden by default; init() shows it when env or project is
-     missing. Two steps, rendered in the same container.
-     ========================================================= -->
-<div id="onboarding" class="onboarding" hidden aria-modal="true" role="dialog">
-  <div class="onboarding-card">
-    <div class="onboarding-mark">◐</div>
-    <div class="onboarding-brand">Novelforge · 小说锻造厂</div>
+{% include "_partials/dialogs/onboarding.html" %}
 
-    <!-- Step 1: API key -->
-    <div class="onb-step" data-step="key" hidden>
-      <div class="onb-step-n">步骤 1 / 2</div>
-      <h2 class="onb-title">先配一把钥匙</h2>
-      <p class="onb-sub">
-        所有 Agent 都通过 DeepSeek chat/completions 调用大模型。粘贴 API key 即可开始；
-        密钥只会写入项目根目录的 <code>.env</code>，服务器不会外传。
-      </p>
-      <form class="onb-form" id="onb-key-form">
-        <label class="form-field">
-          <span class="form-label">DEEPSEEK_API_KEY <span class="form-required">*</span></span>
-          <input id="onb-deepseek" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." required />
-        </label>
-        <label class="form-field form-field-optional">
-          <span class="form-label">PERPLEXITY_API_KEY <span class="form-hint">可选 · 仅在 Evaluator 命中事实核查时使用</span></span>
-          <input id="onb-perplexity" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="pplx-... （留空跳过）" />
-        </label>
-        <div class="form-error" id="onb-key-error" hidden></div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">保存并继续</button>
-        </div>
-      </form>
-    </div>
+{% include "_partials/dialogs/project_picker.html" %}
 
-    <!-- Step 2: choose project -->
-    <div class="onb-step" data-step="project" hidden>
-      <div class="onb-step-n">步骤 2 / 2</div>
-      <h2 class="onb-title">选一本书 · 或新建一本</h2>
-      <p class="onb-sub">
-        每本书独立维护大纲 / 人物 / 时间线；切换不会丢当前进度。
-      </p>
-      <div class="project-grid" id="onb-project-grid">
-        <div class="project-grid-loading">加载中…</div>
-      </div>
-    </div>
-  </div>
-</div>
+{% include "_partials/dialogs/new_project.html" %}
 
-<!-- =========================================================
-     PROJECT PICKER (dismissable; opened by header ◎ button)
-     ========================================================= -->
-<dialog id="dlg-project" class="dlg">
-  <div class="dlg-header">
-    <h2 class="dlg-title">切换作品</h2>
-    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
-  </div>
-  <div class="dlg-body">
-    <div class="project-grid" id="pp-grid">
-      <div class="project-grid-loading">加载中…</div>
-    </div>
-    <div class="project-extra">
-      <button class="btn btn-ghost" id="pp-edit-sources">
-        <span class="btn-glyph">✎</span>编辑当前作品的源文件
-      </button>
-    </div>
-  </div>
-</dialog>
+{% include "_partials/dialogs/extract_override.html" %}
 
-<!-- =========================================================
-     NEW PROJECT WIZARD (4-step, Phase 4 Task 4.7)
-       1) 基本信息
-       2) 题材起点 (preset / extract / blank)
-       3) 大纲起点 (synopsis / blank)
-       4) 角色起点 (brief / blank)
-     ========================================================= -->
-<dialog id="dlg-new-project" class="dlg dlg-wide">
-  <div class="dlg-header">
-    <h2 class="dlg-title">新建作品</h2>
-    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
-  </div>
-  <div class="dlg-body">
-    <form id="project-wizard-form" class="onb-form">
+{% include "_partials/dialogs/sources_editor.html" %}
 
-      <!-- Step 1 · basics -->
-      <section data-wizard-step="1" class="wizard-pane is-active">
-        <div class="wizard-step-head">1/4 · 基本信息</div>
-        <label class="form-field">
-          <span class="form-label">作品 ID <span class="form-required">*</span>
-            <span class="form-hint">小写字母 / 数字 / 连字符 / 下划线，长度 ≤ 64</span>
-          </span>
-          <input name="id" class="form-input form-input-mono" type="text"
-                 pattern="^[a-z0-9_][a-z0-9_-]{0,63}$" placeholder="my-new-book" required />
-        </label>
-        <label class="form-field">
-          <span class="form-label">显示名 <span class="form-required">*</span></span>
-          <input name="display_name" class="form-input" type="text" required />
-        </label>
-        <label class="form-field">
-          <span class="form-label">主角姓名 <span class="form-required">*</span></span>
-          <input name="protagonist_name" class="form-input" type="text" required />
-        </label>
-        <label class="form-field">
-          <span class="form-label">目标章数 <span class="form-required">*</span></span>
-          <input name="chapter_count_target" class="form-input" type="number" min="1" value="50" required />
-        </label>
-        <div class="form-error" data-wizard-error="1" hidden></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-primary" data-wizard-next="2">下一步 →</button>
-        </div>
-      </section>
-
-      <!-- Step 2 · genre starter (three options) -->
-      <section data-wizard-step="2" class="wizard-pane" hidden>
-        <div class="wizard-step-head">2/4 · 题材起点</div>
-        <div class="form-field">
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="preset" data-genre-starter="preset" checked>
-            <span>从 preset 拷贝 <span class="form-hint">（最快；直接复用已有题材包）</span></span>
-          </label>
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="extract" data-genre-starter="extract">
-            <span>从原著拆 <span class="form-hint">（调 LLM，慢；从小说素材拆题材）</span></span>
-          </label>
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="blank" data-genre-starter="blank">
-            <span>最小脚手架（空壳） <span class="form-hint">（产出 TODO 占位，手填）</span></span>
-          </label>
-        </div>
-
-        <div data-genre-panel="preset">
-          <label class="form-field">
-            <span class="form-label">选择 preset：</span>
-            <select name="from_preset" id="select-from-preset" class="form-input">
-              <option value="" disabled selected>加载中…</option>
-            </select>
-          </label>
-        </div>
-        <div data-genre-panel="extract" hidden>
-          <div class="form-field">
-            <span class="form-label">从 novels/ 大池子勾选素材：</span>
-            <div id="novels-pool-checkboxes" class="wizard-checkbox-pool">
-              <span class="form-hint">加载中…</span>
-            </div>
-          </div>
-          <label class="wizard-radio">
-            <input type="checkbox" name="extract_with_trial">
-            <span>跑 3 章试验书 <span class="form-hint">（慢；验证题材包可用性）</span></span>
-          </label>
-        </div>
-        <div data-genre-panel="blank" hidden>
-          <p class="form-hint">将产出 4 份 TODO 空壳，等你手填后 bootstrap。</p>
-        </div>
-
-        <div class="form-error" data-wizard-error="2" hidden></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-wizard-prev="1">← 上一步</button>
-          <button type="button" class="btn btn-primary" data-wizard-next="3">下一步 →</button>
-        </div>
-      </section>
-
-      <!-- Step 3 · outline starter -->
-      <section data-wizard-step="3" class="wizard-pane" hidden>
-        <div class="wizard-step-head">3/4 · 大纲起点</div>
-        <label class="form-field">
-          <span class="form-label">粘贴故事梗概 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
-          <textarea name="outline_synopsis" class="form-input" rows="6"
-                    placeholder="主角的动机、冲突、转折…"></textarea>
-        </label>
-        <label class="wizard-radio">
-          <input type="checkbox" name="blank_outline">
-          <span>跳过，产出空壳 outline</span>
-        </label>
-        <div class="form-error" data-wizard-error="3" hidden></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-wizard-prev="2">← 上一步</button>
-          <button type="button" class="btn btn-primary" data-wizard-next="4">下一步 →</button>
-        </div>
-      </section>
-
-      <!-- Step 4 · characters starter -->
-      <section data-wizard-step="4" class="wizard-pane" hidden>
-        <div class="wizard-step-head">4/4 · 角色起点</div>
-        <label class="form-field">
-          <span class="form-label">粘贴人物简介 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
-          <textarea name="characters_brief" class="form-input" rows="6"
-                    placeholder="主角身份、配角列表、关系网…"></textarea>
-        </label>
-        <label class="wizard-radio">
-          <input type="checkbox" name="blank_characters">
-          <span>跳过，产出只含主角的空壳</span>
-        </label>
-        <div class="form-error" data-wizard-error="4" hidden></div>
-        <div class="wizard-status" id="np-create-status" hidden>
-          {{ forms.phase_timeline() }}
-          <div class="wizard-status-row">
-            <div class="wizard-status-mark">◐</div>
-            <div class="wizard-status-text">提交中…</div>
-            <button type="button" class="btn btn-danger btn-sm" id="np-btn-abort" hidden>⏹ 中断</button>
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-wizard-prev="3">← 上一步</button>
-          <button type="submit" class="btn btn-primary" id="btn-wizard-submit">创建作品</button>
-        </div>
-      </section>
-
-    </form>
-  </div>
-</dialog>
-
-<!-- =========================================================
-     OVERRIDE GENRE dialog (⎇ button on project home, Phase 4 Task 4.7)
-     ========================================================= -->
-<dialog id="extract-override-dialog" class="dlg">
-  <div class="dlg-header">
-    <h2 class="dlg-title">从原著覆盖当前题材配置</h2>
-    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
-  </div>
-  <div class="dlg-body">
-    <form id="extract-override-form" class="onb-form">
-      <div class="form-field">
-        <span class="form-label">从 novels/ 大池子勾选素材：</span>
-        <div id="override-novels-checkboxes" class="wizard-checkbox-pool">
-          <span class="form-hint">加载中…</span>
-        </div>
-      </div>
-      <label class="wizard-radio">
-        <input type="checkbox" name="override_with_trial">
-        <span>跑 3 章试验书 <span class="form-hint">（慢）</span></span>
-      </label>
-      <div class="form-error" id="extract-override-error" hidden></div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-ghost" data-close-override data-close-dialog>取消</button>
-        <button type="submit" class="btn btn-primary">▶ 开始拆解</button>
-      </div>
-    </form>
-    <div id="extract-override-progress" hidden>
-      <div class="wizard-status">
-        {{ forms.phase_timeline() }}
-        <div class="wizard-status-row">
-          <div class="wizard-status-mark">◐</div>
-          <div class="wizard-status-text">正在拆解…（每批 25 章 · 滑动窗口 · 可能数分钟）</div>
-          <button type="button" class="btn btn-danger btn-sm" id="btn-extract-abort">⏹ 中断</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</dialog>
-
-<!-- =========================================================
-     SOURCE FILE EDITOR (standalone, opened from project picker)
-     ========================================================= -->
-<dialog id="dlg-sources" class="dlg dlg-wide">
-  <div class="dlg-header">
-    <h2 class="dlg-title">编辑源文件 · <span id="src-active-project" class="dlg-subtitle">—</span></h2>
-    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
-  </div>
-  <div class="dlg-body">
-    <div class="src-editor" data-scope="standalone">
-      <div class="src-tabs" role="tablist">
-        <button class="src-tab is-active" data-src="project.yaml">project.yaml</button>
-        <button class="src-tab" data-src="outline.json">outline.json</button>
-        <button class="src-tab" data-src="characters.yaml">characters.yaml</button>
-        <button class="src-tab" data-src="timeline.yaml">timeline.yaml</button>
-      </div>
-      <div class="src-hint">
-        纯文本编辑器 · 保存后 state/ 会自动重新同步（progress 保留）。
-        复杂编辑请直接打开对应文件 — 它们就在 <code>projects/&lt;id&gt;/</code>。
-      </div>
-      <textarea class="src-textarea" data-src-area rows="22" spellcheck="false"></textarea>
-      <div class="form-error" data-src-error hidden></div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-primary" data-src-save>保存</button>
-        <button type="button" class="btn btn-ghost" data-close-dialog>关闭</button>
-      </div>
-    </div>
-  </div>
-</dialog>
-
-<!-- =========================================================
-     SETTINGS (.env editor)
-     ========================================================= -->
-<dialog id="dlg-settings" class="dlg">
-  <div class="dlg-header">
-    <h2 class="dlg-title">设置 · .env</h2>
-    <button class="dlg-close" aria-label="关闭" data-close-dialog>×</button>
-  </div>
-  <div class="dlg-body">
-    <form id="settings-form" class="onb-form">
-      <div class="settings-group">
-        <div class="settings-group-label">DeepSeek · 所有创作 Agent 的主引擎</div>
-        <label class="form-field">
-          <span class="form-label">DEEPSEEK_API_KEY</span>
-          <input id="st-deepseek-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
-          <span class="form-hint-inline" data-hint-for="st-deepseek-key"></span>
-        </label>
-        <label class="form-field">
-          <span class="form-label">DEEPSEEK_BASE_URL</span>
-          <input id="st-deepseek-base" class="form-input form-input-mono" type="text" spellcheck="false" />
-        </label>
-        <label class="form-field">
-          <span class="form-label">DEEPSEEK_MODEL</span>
-          <input id="st-deepseek-model" class="form-input form-input-mono" type="text" spellcheck="false" />
-        </label>
-      </div>
-      <div class="settings-group">
-        <div class="settings-group-label">Perplexity · 可选，仅 FactChecker 会用</div>
-        <label class="form-field">
-          <span class="form-label">PERPLEXITY_API_KEY</span>
-          <input id="st-perplexity-key" class="form-input form-input-password" type="password" autocomplete="off" spellcheck="false" placeholder="留空保留当前值" />
-          <span class="form-hint-inline" data-hint-for="st-perplexity-key"></span>
-        </label>
-        <label class="form-field">
-          <span class="form-label">PERPLEXITY_BASE_URL</span>
-          <input id="st-perplexity-base" class="form-input form-input-mono" type="text" spellcheck="false" />
-        </label>
-        <label class="form-field">
-          <span class="form-label">PERPLEXITY_MODEL</span>
-          <input id="st-perplexity-model" class="form-input form-input-mono" type="text" spellcheck="false" />
-        </label>
-      </div>
-      <div class="form-error" id="st-error" hidden></div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">保存</button>
-        <button type="button" class="btn btn-ghost" data-close-dialog>取消</button>
-      </div>
-    </form>
-  </div>
-</dialog>
+{% include "_partials/dialogs/settings.html" %}
 </body>
 </html>
