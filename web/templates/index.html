@@ -72,10 +72,8 @@
       </div>
     </div>
 
-    <div class="topbar-spacer" aria-hidden="true"></div>
-
-    <div class="actions actions-nav">
-      <!-- View switcher: 作品 (章节流水线) | 题材 (提取看板) -->
+    <!-- 中段：view-switcher 作为顶栏视觉锚点，两视图位置不变 -->
+    <div class="topbar-center">
       <div class="view-switcher" role="tablist" aria-label="视图切换">
         <button id="view-btn-novel" class="view-btn is-active" role="tab" aria-selected="true" type="button" title="作品视图 · 章节流水线">
           <span class="btn-glyph">📖</span>作品
@@ -84,30 +82,14 @@
           <span class="btn-glyph">❖</span>题材
         </button>
       </div>
+    </div>
 
-      <!-- Genre job selector: 仅在题材视图显示 -->
-      <select id="genre-job-selector" class="run-select view-genre-only" style="display:none" title="选择题材任务">
-        <option value="">加载中…</option>
-      </select>
-
-      <!-- Project switcher: 仅作品视图可见；题材视图隐藏 -->
-      <button id="btn-project" class="btn btn-ghost btn-project view-novel-only" title="切换作品 / 新建作品">
+    <div class="actions actions-nav">
+      <!-- 右段：两视图稳定可见的 3 个全局入口（作品切换 / 设置 / 重载） -->
+      <button id="btn-project" class="btn btn-ghost btn-project" title="切换作品 / 新建作品">
         <span class="btn-glyph">◎</span>
         <span id="btn-project-name">未激活</span>
       </button>
-
-      <!-- 题材视图专属入口：题材库 / 素材库 / 新建题材 -->
-      <a class="btn btn-ghost view-genre-only" href="/presets" title="题材库：浏览 / 删除现有 preset" style="display:none">
-        <span class="btn-glyph">❖</span>题材库
-      </a>
-      <a class="btn btn-ghost view-genre-only" href="/novels" title="素材库：上传 / 管理源 txt（拆题材的输入）" style="display:none">
-        <span class="btn-glyph">📚</span>素材库
-      </a>
-      <a class="btn btn-primary view-genre-only" href="/presets/new" title="新建题材 · 三种方式" style="display:none">
-        <span class="btn-glyph">+</span>新建题材
-      </a>
-
-      <!-- Settings (.env editor) -->
       <button id="btn-settings" class="btn btn-ghost btn-icon" title="编辑 .env — API key 与模型">
         <span class="btn-glyph">⚙</span>
       </button>
@@ -126,9 +108,16 @@
       <span id="pill-jobs" class="pill pill-jobs" style="display:none"></span>
     </div>
 
+    <!-- 中段：题材视图专属的 job 下拉（作品视图下为空，由 spacer 撑住） -->
+    <div class="topbar-center">
+      <select id="genre-job-selector" class="run-select view-genre-only" style="display:none" title="选择题材任务">
+        <option value="">加载中…</option>
+      </select>
+    </div>
+
     <div class="actions actions-ops">
-      <!-- Run panel: mode-aware dispatch across all 9 pipeline entry points -->
-      <div class="run-panel" id="run-panel">
+      <!-- Run panel: 作品视图专属 -->
+      <div class="run-panel view-novel-only" id="run-panel">
         <label class="run-field">
           <span class="run-label">模式</span>
           <select id="run-mode" class="run-select" title="流水线入口 — 覆盖 /api/run 所有模式">
@@ -159,10 +148,22 @@
         </button>
       </div>
 
-      <!-- Override genre: re-run extract-genre on current project (Phase 4 Task 4.7) -->
-      <button id="btn-extract-genre-override" class="btn btn-ghost btn-icon" title="从原著覆盖当前题材配置">
+      <!-- Override genre: 作品视图专属的"从原著覆盖当前题材"快捷 -->
+      <button id="btn-extract-genre-override" class="btn btn-ghost btn-icon view-novel-only" title="从原著覆盖当前题材配置">
         <span class="btn-glyph">⎇</span>
       </button>
+
+      <!-- 题材视图专属入口：题材库 / 素材库 / 新建题材。
+           与 run-panel 同层，顶栏 ops 行两视图的"操作区"职责对齐。 -->
+      <a class="btn btn-ghost view-genre-only" href="/presets" title="题材库：浏览 / 删除现有 preset" style="display:none">
+        <span class="btn-glyph">❖</span>题材库
+      </a>
+      <a class="btn btn-ghost view-genre-only" href="/novels" title="素材库：上传 / 管理源 txt（拆题材的输入）" style="display:none">
+        <span class="btn-glyph">📚</span>素材库
+      </a>
+      <a class="btn btn-primary view-genre-only" href="/presets/new" title="新建题材 · 三种方式" style="display:none">
+        <span class="btn-glyph">+</span>新建题材
+      </a>
     </div>
   </div>
 </header>

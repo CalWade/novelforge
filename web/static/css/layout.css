@@ -34,26 +34,45 @@
 }
 .topbar-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* 3 列稳定骨架：左 brand/pills | 中 view-switcher/job-下拉 | 右 actions
+     1fr 让左右分配剩余空间；min-width:0 允许文本溢出省略而不把列撑宽；
+     左区内容靠左、右区内容靠右；中段始终居中，两视图视觉锚点不变。 */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
+  width: 100%;
 }
 /* 锁定两行高度，避免作品/题材视图切换时顶栏抖动：
-   - 作品视图 ops 里有 run-panel（高 44px），题材视图 ops 是 pills（27px）
-     → 给两行都固定 min-height 确保切换时 topbar 总高不变
-   - actions 区域宽度差距大不做 min-width 约束（会撑破 grid）；由 grid
-     的 1fr spacer 自动吸收，两视图的右侧按钮靠右对齐即可
-   实测：min-height 48 能吃掉 run-panel/pills 的高度差，topbar 恒 ≈120px */
+   - 作品视图 ops 里有 run-panel（44px），题材视图 ops 是 pills（27px）
+     → 给两行都固定 min-height 确保切换时 topbar 总高不变 */
 .topbar-row-nav { min-height: 40px; }
 .topbar-row-ops {
   padding-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.03);
   min-height: 48px;
 }
-.topbar-spacer { min-width: 0; }
+/* 中段容器：view-switcher（row-nav）或 job 下拉（row-ops）住这里。
+   grid-column 2 由 auto 撑开即可；flex center 让内部元素横向居中。 */
+.topbar-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+/* 左段：brand / pills 自然靠左（justify-self:start 由 grid 默认行为满足） */
+.brand,
+.pills { justify-self: start; }
+/* 右段：actions 靠右 */
 .actions-nav,
-.actions-ops { justify-content: flex-end; }
+.actions-ops {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .actions-ops { gap: 10px; min-height: 44px; }
+/* 保留旧 spacer 类以防其他地方引用；在新 3 列 grid 下不再使用 */
+.topbar-spacer { min-width: 0; display: none; }
 
 .brand {
   display: flex; align-items: center; gap: 12px;
