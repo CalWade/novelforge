@@ -1,0 +1,33 @@
+{# =========================================================
+   _macros/forms.html — shared form primitives for index.html
+   and wizard dialogs. Keep this file small and stateless: no
+   business logic, just layout primitives that would otherwise
+   be duplicated.
+   ========================================================= #}
+
+{#
+  phase_timeline(compact=true)
+  ----------------------------
+  The 4-step progress strip used by BOTH the new-project wizard
+  (Step 4 status pane) and the override-genre dialog. Phases map
+  1:1 to the extract-to-project / extract-to-preset pipeline:
+      extract → merge → draft → validate
+
+  The JS at features/extractOverride.js + features/projectWizard.js
+  walks `data-phase-timeline > li[data-phase]` to flip classes as
+  the backend `on_phase` callback fires, so the DOM shape below
+  must remain stable.
+
+  `compact=true` just adds the `.phase-timeline-compact` modifier
+  that tightens vertical rhythm inside dialogs. Pages that want the
+  full-height variant (e.g. a future standalone progress page) can
+  call with `compact=false`.
+#}
+{% macro phase_timeline(compact=true) %}
+<ol class="phase-timeline{% if compact %} phase-timeline-compact{% endif %}" data-phase-timeline>
+  <li data-phase="extract"><span class="phase-name">Extract</span><span class="phase-bar"><span class="phase-bar-fill"></span></span></li>
+  <li data-phase="merge"><span class="phase-name">Merge</span><span class="phase-bar"><span class="phase-bar-fill"></span></span></li>
+  <li data-phase="draft"><span class="phase-name">Draft</span><span class="phase-bar"><span class="phase-bar-fill"></span></span></li>
+  <li data-phase="validate"><span class="phase-name">Validate</span><span class="phase-bar"><span class="phase-bar-fill"></span></span></li>
+</ol>
+{% endmacro %}

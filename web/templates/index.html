@@ -1,4 +1,7 @@
 <!doctype html>
+{# Task #9: share the 4-step phase timeline used by both extract
+   flows (new-project wizard Step 4 + override-genre dialog). #}
+{% import "_macros/forms.html" as forms %}
 <html lang="zh-Hans">
 <head>
 <meta charset="utf-8" />
@@ -9,7 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}" />
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
-<script src="{{ url_for('static', filename='main.js') }}" defer></script>
+<script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
 <body data-active-project="{{ active_project_id or '' }}">
 
@@ -24,78 +27,99 @@
   </div>
 </div>
 
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-mark">◐</span>
-    <div class="brand-text">
-      <div class="brand-title">Novelforge</div>
-      <div class="brand-sub" id="brand-sub">小说锻造厂 · 多 Agent 长链路流水线</div>
+<header class="topbar topbar-stacked">
+  {#
+    Lane B Task #11: header split into two rows.
+      - .topbar-row-nav  — identity + cross-section navigation
+      - .topbar-row-ops  — operational controls (pills, run panel, override)
+
+    Rationale: the single-row layout previously required ~1560px
+    before pills stayed visible, so the "章节 / 运行中 / 技术债 / LLM"
+    pills were hidden below 1200px — exactly the width most
+    demo laptops open at. Two rows cost ~34px of vertical space
+    but keep all signal visible down to ~1024px.
+  #}
+  <div class="topbar-row topbar-row-nav">
+    <div class="brand">
+      <span class="brand-mark">◐</span>
+      <div class="brand-text">
+        <div class="brand-title">Novelforge</div>
+        <div class="brand-sub" id="brand-sub">小说锻造厂 · 多 Agent 长链路流水线</div>
+      </div>
+    </div>
+
+    <div class="topbar-spacer" aria-hidden="true"></div>
+
+    <div class="actions actions-nav">
+      <!-- Project switcher: shows active project, click to open picker -->
+      <button id="btn-project" class="btn btn-ghost btn-project" title="切换作品 / 新建作品">
+        <span class="btn-glyph">◎</span>
+        <span id="btn-project-name">未激活</span>
+      </button>
+      <!-- Cross-section navigation: genres + novels library -->
+      <!-- Task #7: ◎ reserved for "active project"; genres get a distinct glyph (❖) -->
+      <a class="btn btn-ghost" href="/presets" title="题材库：建 / 补 / 审 / 从小说拆解题材包">
+        <span class="btn-glyph">❖</span>题材库
+      </a>
+      <a class="btn btn-ghost" href="/novels" title="素材库：上传管理小说 txt 文件">
+        <span class="btn-glyph">📚</span>素材库
+      </a>
+      <!-- Settings (.env editor) -->
+      <button id="btn-settings" class="btn btn-ghost btn-icon" title="编辑 .env — API key 与模型">
+        <span class="btn-glyph">⚙</span>
+      </button>
+      <button id="btn-reload" class="btn btn-ghost btn-icon" title="重载页面；所有状态在 state/ 文件里，永不丢失">
+        <span class="btn-glyph">⟳</span>
+      </button>
     </div>
   </div>
 
-  <div class="pills" id="pills">
-    <span class="pill pill-muted"><span class="pill-label">章节</span><span id="pill-chapter">—</span></span>
-    <span class="pill pill-muted"><span class="pill-label">运行中</span><span id="pill-running">空闲</span></span>
-    <span class="pill pill-muted"><span class="pill-label">技术债</span><span id="pill-debt">0</span></span>
-    <span class="pill pill-muted"><span class="pill-label">LLM 调用</span><span id="pill-calls">0</span></span>
-  </div>
-
-  <div class="actions">
-    <!-- Run panel: mode-aware dispatch across all 9 pipeline entry points -->
-    <div class="run-panel" id="run-panel">
-      <label class="run-field">
-        <span class="run-label">模式</span>
-        <select id="run-mode" class="run-select" title="流水线入口 — 覆盖 /api/run 所有模式">
-          <option value="chapter" selected>生成单章</option>
-          <option value="range">批量生成</option>
-          <option value="packaging">出版包装</option>
-          <option value="plan-only">只重排大纲</option>
-          <option value="write-only">只重写正文</option>
-          <option value="evaluate-only">只重评</option>
-          <option value="fix-only">只跑修复</option>
-          <option value="audit-only">只重审计</option>
-          <option value="bookkeeping-only">只刷台账</option>
-        </select>
-      </label>
-      <label class="run-field" id="run-chapter-field">
-        <span class="run-label">章</span>
-        <input id="run-chapter" class="run-input" type="number" min="1" step="1" value="1" />
-      </label>
-      <label class="run-field" id="run-range-field" hidden>
-        <span class="run-label">范围</span>
-        <input id="run-range" class="run-input run-input-range" type="text" pattern="^\d+-\d+$" placeholder="1-3" value="1-3" />
-      </label>
-      <button id="btn-run" class="btn btn-primary" title="POST /api/run">
-        <span class="btn-glyph">▶</span>开始
-      </button>
-      <button id="btn-abort" class="btn" title="POST /api/abort — 在下一阶段边界停下" disabled>
-        <span class="btn-glyph">⏹</span>中断
-      </button>
+  <div class="topbar-row topbar-row-ops">
+    <div class="pills" id="pills">
+      <span class="pill pill-muted"><span class="pill-label">章节</span><span id="pill-chapter">—</span></span>
+      <span class="pill pill-muted"><span class="pill-label">运行中</span><span id="pill-running">空闲</span></span>
+      <span class="pill pill-muted"><span class="pill-label">技术债</span><span id="pill-debt">0</span></span>
+      <span class="pill pill-muted"><span class="pill-label">LLM 调用</span><span id="pill-calls">0</span></span>
     </div>
 
-    <!-- Project switcher: shows active project, click to open picker -->
-    <button id="btn-project" class="btn btn-ghost btn-project" title="切换作品 / 新建作品">
-      <span class="btn-glyph">◎</span>
-      <span id="btn-project-name">未激活</span>
-    </button>
-    <!-- Override genre: re-run extract-genre on current project (Phase 4 Task 4.7) -->
-    <button id="btn-extract-genre-override" class="btn btn-ghost btn-icon" title="从原著覆盖当前题材配置">
-      <span class="btn-glyph">⎇</span>
-    </button>
-    <!-- Cross-section navigation: genres + novels library -->
-    <a class="btn btn-ghost" href="/presets" title="题材库：建 / 补 / 审 / 从小说拆解题材包">
-      <span class="btn-glyph">◎</span>题材库
-    </a>
-    <a class="btn btn-ghost" href="/novels" title="素材库：上传管理小说 txt 文件">
-      <span class="btn-glyph">📚</span>素材库
-    </a>
-    <!-- Settings (.env editor) -->
-    <button id="btn-settings" class="btn btn-ghost btn-icon" title="编辑 .env — API key 与模型">
-      <span class="btn-glyph">⚙</span>
-    </button>
-    <button id="btn-reload" class="btn btn-ghost btn-icon" title="重载页面；所有状态在 state/ 文件里，永不丢失">
-      <span class="btn-glyph">⟳</span>
-    </button>
+    <div class="actions actions-ops">
+      <!-- Run panel: mode-aware dispatch across all 9 pipeline entry points -->
+      <div class="run-panel" id="run-panel">
+        <label class="run-field">
+          <span class="run-label">模式</span>
+          <select id="run-mode" class="run-select" title="流水线入口 — 覆盖 /api/run 所有模式">
+            <option value="chapter" selected>生成单章</option>
+            <option value="range">批量生成</option>
+            <option value="packaging">出版包装</option>
+            <option value="plan-only">只重排大纲</option>
+            <option value="write-only">只重写正文</option>
+            <option value="evaluate-only">只重评</option>
+            <option value="fix-only">只跑修复</option>
+            <option value="audit-only">只重审计</option>
+            <option value="bookkeeping-only">只刷台账</option>
+          </select>
+        </label>
+        <label class="run-field" id="run-chapter-field">
+          <span class="run-label">章</span>
+          <input id="run-chapter" class="run-input" type="number" min="1" step="1" value="1" />
+        </label>
+        <label class="run-field" id="run-range-field" hidden>
+          <span class="run-label">范围</span>
+          <input id="run-range" class="run-input run-input-range" type="text" pattern="^\d+-\d+$" placeholder="1-3" value="1-3" />
+        </label>
+        <button id="btn-run" class="btn btn-primary" title="POST /api/run">
+          <span class="btn-glyph">▶</span>开始
+        </button>
+        <button id="btn-abort" class="btn" title="POST /api/abort — 在下一阶段边界停下" disabled>
+          <span class="btn-glyph">⏹</span>中断
+        </button>
+      </div>
+
+      <!-- Override genre: re-run extract-genre on current project (Phase 4 Task 4.7) -->
+      <button id="btn-extract-genre-override" class="btn btn-ghost btn-icon" title="从原著覆盖当前题材配置">
+        <span class="btn-glyph">⎇</span>
+      </button>
+    </div>
   </div>
 </header>
 
@@ -123,9 +147,11 @@
   <!-- CENTER: viewer -->
   <section class="col col-center">
     <div class="tabs" role="tablist">
-      <button class="tab tab-active" data-tab="chapter" role="tab">章节</button>
-      <button class="tab" data-tab="debt" role="tab">技术债<span id="tab-debt-count" class="tab-badge"></span></button>
-      <button class="tab" data-tab="rules" role="tab">规则</button>
+      <button class="tab tab-active" data-tab="chapter" role="tab" aria-selected="true">章节</button>
+      <!-- TODO #2: bookkeeping promoted above debt — Context-Reset authority > failure log -->
+      <button class="tab" data-tab="bookkeeping" role="tab" aria-selected="false" title="Lesson-3 三层 bookkeeping · 当前状态卡 / 待回收伏笔 / 资源账本">◉ 台账<span id="tab-bookkeeping-badge" class="tab-badge tab-badge-dim"></span></button>
+      <button class="tab" data-tab="debt" role="tab" aria-selected="false">技术债<span id="tab-debt-count" class="tab-badge"></span></button>
+      <button class="tab" data-tab="rules" role="tab" aria-selected="false">规则</button>
       <div class="tab-spacer"></div>
       <div class="viewer-meta" id="viewer-meta"></div>
     </div>
@@ -155,6 +181,62 @@
           </div>
         </article>
       </div>
+
+      <div class="tab-pane" data-pane="bookkeeping">
+        <div id="bookkeeping-view" class="bookkeeping-view">
+          <div class="bk-preamble">
+            <span class="bk-preamble-mark">◉</span>
+            <span class="bk-preamble-text">
+              <strong>Lesson-3 三层 bookkeeping.</strong>
+              <em>当前时间点唯一权威</em> —— 每章末尾覆盖式重写。
+              Context Reset 时，只需重读这三份即可重建全书局势。
+            </span>
+          </div>
+          <div class="bk-grid">
+            <section class="bk-card" data-bk="status" aria-label="当前状态卡">
+              <header class="bk-card-head">
+                <span class="bk-card-dot bk-card-dot--status"></span>
+                <span class="bk-card-title">当前状态卡</span>
+                <span class="bk-card-sub">current_status_card.md</span>
+                <span class="bk-card-flag"></span>
+                <button class="bk-card-refresh" type="button" title="刷新本卡" aria-label="刷新当前状态卡">⟳</button>
+              </header>
+              <div class="bk-card-meta">Context Reset 权威 · StatusCardUpdater 产出</div>
+              <div class="bk-card-body">
+                <div class="placeholder"><div class="placeholder-title">加载中…</div></div>
+              </div>
+            </section>
+
+            <section class="bk-card" data-bk="hooks" aria-label="待回收伏笔池">
+              <header class="bk-card-head">
+                <span class="bk-card-dot bk-card-dot--hooks"></span>
+                <span class="bk-card-title">待回收伏笔</span>
+                <span class="bk-card-sub">pending_hooks.md</span>
+                <span class="bk-card-flag"></span>
+                <button class="bk-card-refresh" type="button" title="刷新本卡" aria-label="刷新待回收伏笔">⟳</button>
+              </header>
+              <div class="bk-card-meta">Planner 每章必读 · HookKeeper 产出</div>
+              <div class="bk-card-body">
+                <div class="placeholder"><div class="placeholder-title">加载中…</div></div>
+              </div>
+            </section>
+
+            <section class="bk-card" data-bk="ledger" aria-label="资源账本">
+              <header class="bk-card-head">
+                <span class="bk-card-dot bk-card-dot--ledger"></span>
+                <span class="bk-card-title">资源账本</span>
+                <span class="bk-card-sub">resource_ledger.md</span>
+                <span class="bk-card-flag"></span>
+                <button class="bk-card-refresh" type="button" title="刷新本卡" aria-label="刷新资源账本">⟳</button>
+              </header>
+              <div class="bk-card-meta">依 resource_schema.yaml · 可选</div>
+              <div class="bk-card-body">
+                <div class="placeholder"><div class="placeholder-title">加载中…</div></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -165,12 +247,12 @@
       <button class="tab" data-rtab="log" role="tab">日志</button>
       <button class="tab" data-rtab="lessons" role="tab">课题对照</button>
       <div class="tab-spacer"></div>
-      <span class="live-dot" id="live-dot" title="轮询中"></span>
+      <!-- TODO #4: removed polling indicator; .pill-running in header owns "running" signal now -->
     </div>
 
     <div class="tab-body tab-body-right">
       <div class="tab-pane tab-pane-active" data-rpane="inspector">
-        <div class="inspector-hint">
+        <div class="panel-hint"><!-- TODO #15: was .inspector-hint -->
           <strong>每一次调用都是全新上下文</strong>
           <span>独立 system prompt · 只读声明好的文件 · 无对话历史</span>
         </div>
@@ -184,7 +266,7 @@
       </div>
 
       <div class="tab-pane" data-rpane="lessons">
-        <div class="lessons-hint">
+        <div class="panel-hint"><!-- TODO #15: was .lessons-hint -->
           <strong>5 条原则 → 5 处代码</strong>
           <span>Anthropic · Cognition · OpenAI 的 agent 构建经验, 在本项目的精确落地位置。</span>
         </div>
@@ -389,8 +471,12 @@
         </label>
         <div class="form-error" data-wizard-error="4" hidden></div>
         <div class="wizard-status" id="np-create-status" hidden>
-          <div class="wizard-status-mark">◐</div>
-          <div class="wizard-status-text">提交中…</div>
+          {{ forms.phase_timeline() }}
+          <div class="wizard-status-row">
+            <div class="wizard-status-mark">◐</div>
+            <div class="wizard-status-text">提交中…</div>
+            <button type="button" class="btn btn-danger btn-sm" id="np-btn-abort" hidden>⏹ 中断</button>
+          </div>
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" data-wizard-prev="3">← 上一步</button>
@@ -430,8 +516,12 @@
     </form>
     <div id="extract-override-progress" hidden>
       <div class="wizard-status">
-        <div class="wizard-status-mark">◐</div>
-        <div class="wizard-status-text">正在拆解…（每批 25 章 · 滑动窗口 · 可能数分钟）</div>
+        {{ forms.phase_timeline() }}
+        <div class="wizard-status-row">
+          <div class="wizard-status-mark">◐</div>
+          <div class="wizard-status-text">正在拆解…（每批 25 章 · 滑动窗口 · 可能数分钟）</div>
+          <button type="button" class="btn btn-danger btn-sm" id="btn-extract-abort">⏹ 中断</button>
+        </div>
       </div>
     </div>
   </div>

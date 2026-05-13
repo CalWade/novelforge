@@ -345,27 +345,106 @@
     });
   }
 
+  // 4-bar phase order. Mirrors _PHASES in web/app.py.
+  const PHASES = ['extract', 'merge', 'draft', 'validate'];
+
+  function renderPhaseTimeline(root, phase) {
+    if (!root) return;
+    const curIdx = PHASES.indexOf(phase);
+    PHASES.forEach((ph, i) => {
+      const li = root.querySelector(`li[data-phase="${ph}"]`);
+      if (!li) return;
+      li.classList.toggle('is-done', curIdx === -1 ? false : i < curIdx);
+      li.classList.toggle('is-active', i === curIdx);
+    });
+  }
+
+  function ensureTimeline(box) {
+    // Inject a 4-bar timeline + abort button into the progress box if the
+    // template didn't ship with one. Keeps the presets page forward-compat
+    // with older templates while letting new templates supply their own.
+    let timeline = box.querySelector('[data-phase-timeline]');
+    if (timeline) return { timeline, abortBtn: box.querySelector('[data-phase-abort]') };
+    timeline = document.createElement('ol');
+    timeline.className = 'phase-timeline phase-timeline-compact';
+    timeline.setAttribute('data-phase-timeline', '');
+    PHASES.forEach((ph) => {
+      const label = ph.charAt(0).toUpperCase() + ph.slice(1);
+      const li = document.createElement('li');
+      li.setAttribute('data-phase', ph);
+      li.innerHTML = `<span class="phase-name">${label}</span><span class="phase-bar"><span class="phase-bar-fill"></span></span>`;
+      timeline.appendChild(li);
+    });
+    box.appendChild(timeline);
+    const abortBtn = document.createElement('button');
+    abortBtn.type = 'button';
+    abortBtn.className = 'btn btn-danger btn-sm';
+    abortBtn.textContent = '⏹ 中断';
+    abortBtn.setAttribute('data-phase-abort', '');
+    abortBtn.hidden = true;
+    box.appendChild(abortBtn);
+    return { timeline, abortBtn };
+  }
+
   async function pollPresetJob(pid) {
     const box = document.getElementById('progress-box');
     const title = document.getElementById('progress-title');
+    const detail = document.getElementById('progress-detail');
     if (box) box.hidden = false;
     if (title) title.textContent = '正在处理：' + pid;
-    for (let i = 0; i < 600; i++) {
+    const parts = box ? ensureTimeline(box) : { timeline: null, abortBtn: null };
+    const { timeline, abortBtn } = parts;
+
+    let userAborted = false;
+    if (abortBtn) {
+      abortBtn.hidden = false;
+      abortBtn.onclick = async () => {
+        userAborted = true;
+        abortBtn.disabled = true;
+        // Preset abort endpoint: for symmetry, presets also reuse the
+        // project-scoped abort if available; otherwise we just stop
+        // polling (the filesystem is the source of truth anyway).
+        try {
+          await fetch(`/api/presets/${encodeURIComponent(pid)}/abort`, { method: 'POST' });
+        } catch (_) { /* no-op: endpoint may not exist */ }
+        if (title) title.textContent = '已请求中断：' + pid;
+      };
+    }
+
+    const POLL_MS = 1000;
+    // No hard iteration cap — long extractions are legitimate.
+    while (true) {
+      if (userAborted) return;
       try {
         const r = await fetch(`/api/presets/${pid}/status`);
         const s = await r.json();
+        if (s.phase) renderPhaseTimeline(timeline, s.phase);
+        if (detail) {
+          if (s.phase) {
+            detail.textContent = `${s.phase}${s.progress ? ' · ' + s.progress : ''}`;
+          } else if (s.state === 'running') {
+            detail.textContent = '启动中…';
+          }
+        }
         if (s.state === 'done') {
+          if (timeline) {
+            timeline.querySelectorAll('li').forEach((li) => {
+              li.classList.remove('is-active');
+              li.classList.add('is-done');
+            });
+          }
           location.href = '/presets/' + pid;
           return;
         }
-        if (s.state === 'failed') {
-          if (title) title.textContent = '失败：' + (s.error || '');
+        if (s.state === 'failed' || s.state === 'aborted' || s.state === 'unknown') {
+          if (title) title.textContent = (s.state === 'aborted' ? '已中止' : '失败') + '：' + (s.error || s.state);
+          if (abortBtn) abortBtn.hidden = true;
           return;
         }
       } catch (e) {
         console.warn('poll error', e);
       }
-      await new Promise(res => setTimeout(res, 1000));
+      await new Promise((res) => setTimeout(res, POLL_MS));
     }
   }
 
