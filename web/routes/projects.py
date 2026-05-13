@@ -3,16 +3,20 @@
 Covers:
   * /api/projects            — list with active flag
   * /api/projects/activate   — switch active book (bootstrap)
-  * /api/projects/new        — 4-step wizard (sync or async via extract)
-  * /api/projects/<pid>/extract-genre{,/progress,/abort}
+  * /api/projects/new        — 4-step wizard (skeleton-only; extract jobs
+                                are now submitted separately via /api/jobs)
   * /api/projects/<pid>/draft-outline, /draft-characters
   * /api/project-files        — edit project.yaml / outline.json / etc.
+
+Removed 2026-05-13 (superseded by the /api/jobs blueprint):
+  * POST /api/projects/<pid>/extract-genre
+  * GET  /api/projects/<pid>/extract-genre/progress
+  * POST /api/projects/<pid>/extract-genre/abort
+  * The asynchronous ``from_extract`` branch of POST /api/projects/new
 """
 from __future__ import annotations
 
 import os
-import threading
-import time
 from pathlib import Path
 
 from flask import Blueprint, abort, jsonify, request
@@ -20,13 +24,8 @@ from flask import Blueprint, abort, jsonify, request
 from src import config
 
 from web._shared import (
-    PHASE_TOTAL,
     READONLY_MODE,
     _PROJECT_EDITABLE,
-    _PROJECT_JOB_LOCK,
-    _PROJECT_JOBS,
-    _initial_job_state,
-    _make_phase_cb,
     _run_lock,
 )
 
@@ -84,13 +83,13 @@ def api_project_activate():
 
 @bp.post("/api/projects/new")
 def api_project_new():
-    """4-step wizard: name → genre → outline → characters.
+    """4-step wizard: create a project skeleton (name → genre → outline → chars).
 
     Required fields:
       id, display_name, protagonist_name, chapter_count_target
 
-    Genre source (exactly one must be indicated):
-      from_preset=<id>  |  blank_genre=True  |  from_extract={sources, with_trial}
+    Genre source (exactly one):
+      from_preset=<id>  |  blank_genre=True
 
     Outline source (exactly one):
       outline_synopsis=<str> (LLM drafts)  |  blank_outline=True
@@ -98,9 +97,10 @@ def api_project_new():
     Characters source (exactly one):
       characters_brief=<str> (LLM drafts)  |  blank_characters=True
 
-    When from_extract is provided, skeleton project is created synchronously
-    and the genre extraction runs in a background thread (returns 202).
-    Otherwise synchronous create_project + bootstrap_project (returns 200).
+    The asynchronous ``from_extract`` branch has been removed. To populate
+    a project's genre files by extracting from source novels, create the
+    skeleton here (typically with ``blank_genre=True``) and then submit an
+    ``extract-to-project`` job via ``POST /api/jobs``.
     """
     if READONLY_MODE:
         return jsonify({"ok": False, "reason": "readonly_mode"}), 403
@@ -115,72 +115,18 @@ def api_project_new():
             return jsonify({"ok": False, "reason": f"{f} required"}), 400
 
     pid = body["id"]
-    from_extract = body.get("from_extract")
 
-    # Async path: from_extract with non-empty sources.
-    # Strategy: create the project skeleton with blank genre stubs right
-    # now (so the project appears in /api/projects immediately), then kick
-    # off genre extraction in a background thread. The extractor
-    # (to_project.extract_to_project) overwrites the blank stubs in place.
-    if from_extract and from_extract.get("sources"):
-        try:
-            from src.bootstrap import create_project
-            create_project(
-                pid,
-                display_name=body["display_name"],
-                protagonist_name=body["protagonist_name"],
-                chapter_count_target=int(body["chapter_count_target"]),
-                blank_genre=True,
-                blank_outline=bool(body.get("blank_outline", False)),
-                outline_synopsis=body.get("outline_synopsis"),
-                blank_characters=bool(body.get("blank_characters", False)),
-                characters_brief=body.get("characters_brief"),
-            )
-        except FileExistsError as e:
-            return jsonify({"ok": False, "reason": str(e)}), 409
-        except ValueError as e:
-            return jsonify({"ok": False, "reason": str(e)}), 400
-        except FileNotFoundError as e:
-            return jsonify({"ok": False, "reason": str(e)}), 404
-
-        with _PROJECT_JOB_LOCK:
-            _PROJECT_JOBS[pid] = _initial_job_state()
-
-        sources = list(from_extract["sources"])
-        with_trial = bool(from_extract.get("with_trial", False))
-
-        def _worker():
-            try:
-                # Import lazily so tests can monkeypatch the module attr.
-                from src.genre_extractor import to_project as to_proj
-                to_proj.extract_to_project(
-                    pid, sources=sources, with_trial=with_trial,
-                    on_phase=_make_phase_cb(_PROJECT_JOBS, _PROJECT_JOB_LOCK, pid),
-                )
-                with _PROJECT_JOB_LOCK:
-                    _PROJECT_JOBS[pid].update({
-                        "state": "done", "error": None,
-                        "phase": "done", "updated_at": time.time(),
-                    })
-            except Exception as e:
-                with _PROJECT_JOB_LOCK:
-                    _PROJECT_JOBS[pid].update({
-                        "state": "failed", "error": str(e),
-                        "updated_at": time.time(),
-                    })
-
-        try:
-            threading.Thread(target=_worker, daemon=True).start()
-        except BaseException:
-            with _PROJECT_JOB_LOCK:
-                _PROJECT_JOBS[pid] = {
-                    "state": "failed", "error": "thread spawn failed",
-                    "phase": None, "phase_index": None, "phase_total": PHASE_TOTAL,
-                    "progress": None, "started_at": time.time(),
-                    "updated_at": time.time(),
-                }
-            raise
-        return jsonify({"ok": True, "project_id": pid, "state": "extracting"}), 202
+    # Reject the legacy ``from_extract`` async payload with a clear pointer
+    # to the new flow, rather than silently ignoring it.
+    if body.get("from_extract") and body["from_extract"].get("sources"):
+        return jsonify({
+            "ok": False,
+            "reason": (
+                "from_extract is no longer accepted on /api/projects/new. "
+                "Create the skeleton with blank_genre=true, then submit "
+                "kind='extract-to-project' to POST /api/jobs."
+            ),
+        }), 400
 
     # Sync path: create skeleton + bootstrap into state/.
     try:
@@ -206,97 +152,6 @@ def api_project_new():
     except FileExistsError as e:
         return jsonify({"ok": False, "reason": str(e)}), 409
     return jsonify({"ok": True, "project_id": pid})
-
-
-@bp.get("/api/projects/<pid>/extract-genre/progress")
-def api_project_extract_progress(pid: str):
-    """Poll the per-project extract-genre job. Unknown pid → state='unknown'.
-
-    Stable 200 in all cases so the UI has a consistent polling contract
-    (same shape as /api/presets/<pid>/status).
-    """
-    with _PROJECT_JOB_LOCK:
-        job = _PROJECT_JOBS.get(pid)
-    if job is None:
-        return jsonify({"state": "unknown", "project_id": pid})
-    return jsonify({**job, "project_id": pid})
-
-
-@bp.post("/api/projects/<pid>/extract-genre")
-def api_project_extract_genre(pid: str):
-    """Post-creation 'overwrite genre config' — re-run extraction into an
-    existing book, rewriting its state/era.md + style/laws files in place.
-
-    Async: validates synchronously, then spawns a daemon thread running
-    to_project.extract_to_project. If the book is currently the active
-    project, the worker also re-bootstraps so state/ picks up the new
-    genre files immediately. Caller polls /extract-genre/progress.
-    """
-    if READONLY_MODE:
-        return jsonify({"ok": False, "reason": "readonly_mode"}), 403
-    project_dir = config.PROJECTS_DIR / pid
-    if not project_dir.exists():
-        return jsonify({"ok": False, "reason": "project not found"}), 404
-    body = request.get_json(silent=True) or {}
-    sources = body.get("sources") or []
-    if not sources:
-        return jsonify({"ok": False, "reason": "sources required"}), 400
-    with_trial = bool(body.get("with_trial", False))
-
-    with _PROJECT_JOB_LOCK:
-        if pid in _PROJECT_JOBS and _PROJECT_JOBS[pid].get("state") == "running":
-            return jsonify({"ok": False, "reason": "job already running"}), 409
-        _PROJECT_JOBS[pid] = _initial_job_state()
-
-    def _worker():
-        try:
-            # Import lazily so tests can monkeypatch the module attr.
-            from src.genre_extractor import to_project
-            to_project.extract_to_project(
-                pid, sources=sources, with_trial=with_trial,
-                on_phase=_make_phase_cb(_PROJECT_JOBS, _PROJECT_JOB_LOCK, pid),
-            )
-            if config.get_active_project_id() == pid:
-                from src import bootstrap
-                bootstrap.bootstrap_project(pid, preserve_progress=True)
-            with _PROJECT_JOB_LOCK:
-                _PROJECT_JOBS[pid].update({
-                    "state": "done", "error": None,
-                    "phase": "done", "updated_at": time.time(),
-                })
-        except Exception as e:
-            with _PROJECT_JOB_LOCK:
-                _PROJECT_JOBS[pid].update({
-                    "state": "failed", "error": str(e),
-                    "updated_at": time.time(),
-                })
-
-    try:
-        threading.Thread(target=_worker, daemon=True).start()
-    except BaseException:
-        with _PROJECT_JOB_LOCK:
-            _PROJECT_JOBS[pid] = {
-                "state": "failed", "error": "thread spawn failed",
-                "phase": None, "phase_index": None, "phase_total": PHASE_TOTAL,
-                "progress": None, "started_at": time.time(),
-                "updated_at": time.time(),
-            }
-        raise
-    return jsonify({"ok": True, "state": "running"}), 202
-
-
-@bp.post("/api/projects/<pid>/extract-genre/abort")
-def api_project_extract_abort(pid: str):
-    """Soft abort: flip job state so UI stops polling. Extraction may still
-    complete in the background thread (cooperative cancellation not plumbed
-    through Blackboard yet)."""
-    with _PROJECT_JOB_LOCK:
-        if pid in _PROJECT_JOBS:
-            _PROJECT_JOBS[pid].update({
-                "state": "aborted", "error": None,
-                "updated_at": time.time(),
-            })
-    return jsonify({"ok": True})
 
 
 @bp.post("/api/projects/<pid>/draft-outline")

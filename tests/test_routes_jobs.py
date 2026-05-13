@@ -6,11 +6,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="requires T11: web/app.py registering jobs blueprint; "
-           "unskip after integration"
-)
-
 
 @pytest.fixture
 def app(tmp_path: Path, monkeypatch):
@@ -18,14 +13,21 @@ def app(tmp_path: Path, monkeypatch):
     from src.jobs import store as store_mod
     from src.jobs import logger as logger_mod
     monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    # PRESETS_DIR / PROJECTS_DIR 是 config 模块的 module-level 常量，
+    # blank_preset / to_preset 等会直接读它；必须一并 monkeypatch 到 tmp_path
+    # 下，否则测试会污染真实仓库的 presets/ 目录。
+    monkeypatch.setattr(config, "PRESETS_DIR", tmp_path / "presets")
+    monkeypatch.setattr(config, "PROJECTS_DIR", tmp_path / "projects")
+    (tmp_path / "presets").mkdir(exist_ok=True)
+    (tmp_path / "projects").mkdir(exist_ok=True)
     monkeypatch.setattr(store_mod, "JOBS_DIR", tmp_path / ".jobs")
     monkeypatch.setattr(logger_mod, "LOGS_DIR", tmp_path / ".jobs" / "logs")
     store_mod._STORE_SINGLETON = None
     logger_mod._LOGGERS.clear()
-    from web.app import create_app
-    a = create_app()
-    a.config["TESTING"] = True
-    yield a
+    # web.app 是模块级构造（非工厂），直接 import 即拿到 Flask 实例。
+    from web.app import app as flask_app
+    flask_app.config["TESTING"] = True
+    yield flask_app
 
 
 def test_list_jobs_empty(app):
@@ -77,7 +79,14 @@ def test_create_same_target_twice_conflicts(app, monkeypatch):
         "kind": "blank", "target": {"type": "preset", "id": "same"},
         "params": {}})
     assert r2.status_code == 409
+    # 让 worker 结束后再退出 fixture，避免 daemon thread 在 monkeypatch 撤销后继续跑
     barrier.set()
+    jid = r1.get_json()["job_id"]
+    for _ in range(50):
+        time.sleep(0.05)
+        j = client.get(f"/api/jobs/{jid}").get_json()
+        if j["state"] in ("done", "failed", "aborted", "interrupted"):
+            break
 
 
 def test_abort_flips_state(app, monkeypatch):
@@ -120,6 +129,12 @@ def test_delete_running_rejected(app, monkeypatch):
     r = client.delete(f"/api/jobs/{jid}")
     assert r.status_code == 409
     barrier.set()
+    # 让 worker 结束后再退出 fixture，避免 daemon thread 继续运行
+    for _ in range(50):
+        time.sleep(0.05)
+        j = client.get(f"/api/jobs/{jid}").get_json()
+        if j["state"] in ("done", "failed", "aborted", "interrupted"):
+            break
 
 
 def test_log_tail_incremental(app, monkeypatch):

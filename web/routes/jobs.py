@@ -16,22 +16,7 @@ from src.jobs import (
     new_job_id,
     read_log_tail,
 )
-
-# NOTE: ``acquire_target_lock`` will eventually live in ``web/_shared.py`` (see
-# plan Task 8). 该函数当前尚未合入 ``_shared``，为使本 blueprint 可独立通过
-# 单元测试，此处就地定义一份临时实现；T8 合入后应改回 ``from web._shared
-# import acquire_target_lock``。
-_TARGET_LOCKS: dict[tuple[str, str], threading.Lock] = {}
-_TARGET_LOCKS_META = threading.Lock()
-
-
-def acquire_target_lock(target_type: str, target_id: str) -> threading.Lock | None:
-    key = (target_type, target_id)
-    with _TARGET_LOCKS_META:
-        lock = _TARGET_LOCKS.setdefault(key, threading.Lock())
-    if lock.acquire(blocking=False):
-        return lock
-    return None
+from web._shared import acquire_target_lock
 
 
 bp = Blueprint("jobs", __name__)
@@ -216,8 +201,9 @@ def _dispatch(rec: dict, *, cancel, on_progress, logger) -> None:
         from src.genre_extractor.from_description import extract_from_description
         extract_from_description(
             target["id"],
-            description=params.get("description", ""),
             display_name=params.get("display_name") or target["id"],
+            tone=params.get("tone", ""),
+            description=params.get("description", ""),
             cancel=cancel,
             on_progress=on_progress,
         )
@@ -226,8 +212,7 @@ def _dispatch(rec: dict, *, cancel, on_progress, logger) -> None:
         extract_to_preset(
             target["id"],
             sources=sources,
-            display_name=params.get("display_name") or target["id"],
-            with_trial=params.get("with_trial", False),
+            with_trial=bool(params.get("with_trial", False)),
             cancel=cancel,
             on_progress=on_progress,
         )
@@ -236,6 +221,7 @@ def _dispatch(rec: dict, *, cancel, on_progress, logger) -> None:
         extract_to_project(
             target["id"],
             sources=sources,
+            with_trial=bool(params.get("with_trial", False)),
             cancel=cancel,
             on_progress=on_progress,
         )
