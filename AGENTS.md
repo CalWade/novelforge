@@ -93,6 +93,32 @@ python -m src.genre_extractor --to-preset <id> --validate-only
 
 每个 Agent = 一次独立 LLM 调用 + 独立 system prompt + 只读它需要的 state/ 文件。
 
+## 改 UI / CSS 前的硬规则
+
+**动任何 `web/static/css/**/*.css` 之前必须先读 [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md)。**
+
+关键约束：
+- 本项目是 **archive-console 深色主题**（墨蓝底 + 琥珀色 accent + 发丝边框），不是 Bootstrap / Material / 白底。
+- 所有颜色 / 圆角 / 字体必须用 `web/static/css/tokens.css` 里的 CSS 变量。
+- **禁止**在 tokens.css 以外写 `#xxx` / `rgb()` / 命名色（`white`、`black` 等）。pre-commit 会拦截。
+- 新增组件前先 grep 现有组件，能复用就不新建。
+- 写新组件时**照抄最接近的现有组件**（如双档切换器 → 看 `components/view-switcher.css`）。
+
+流程：
+1. 读 `docs/DESIGN-SYSTEM.md`（5 分钟够用）
+2. grep 看有没有现成组件
+3. 动 CSS 时过一遍该文档的「新增组件 checklist」
+4. commit 前让 `npm run lint:css` 跑一次
+
+**首次克隆仓库时需要激活 hook**（一次性）：
+
+```bash
+npm install                          # 装 stylelint（dev-only，不影响 Python 运行时）
+git config core.hooksPath .githooks  # 启用 .githooks/pre-commit（CSS 守门）
+```
+
+既有历史硬编码色见 [`docs/DESIGN-SYSTEM-TODO.md`](docs/DESIGN-SYSTEM-TODO.md)，按需清理。
+
 ## 作品目录布局
 
 一本书放在 `projects/<book-id>/`。每本书是自给自足的：

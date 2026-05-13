@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Novelforge pre-commit hook
+#
+# 启用：
+#   git config core.hooksPath .githooks
+#
+# 目前只做一件事：CSS lint。若改了 web/static/css/，必须通过
+# stylelint（防止硬编码颜色 / 违背深色主题 tokens）。
+#
+# 若 node_modules 不存在，会跳过 lint 并给出安装提示；
+# 这样在未装 npm 的克隆环境下也能正常 commit。
+
+set -e
+
+# 只在 web/static/css/ 下有 staged 改动时跑 lint
+changed_css=$(git diff --cached --name-only --diff-filter=ACMR | grep '^web/static/css/.*\.css$' || true)
+if [ -z "$changed_css" ]; then
+  exit 0
+fi
+
+if [ ! -x node_modules/.bin/stylelint ]; then
+  echo "pre-commit: stylelint 未安装，跳过 CSS lint。"
+  echo "           首次使用请在仓库根跑：npm install"
+  exit 0
+fi
+
+echo "pre-commit: 跑 stylelint 检查改动的 CSS 文件…"
+# 只 lint 改动的文件，速度更快；加上 --quiet 省 warnings
+# shellcheck disable=SC2086
+if ! node_modules/.bin/stylelint --quiet $changed_css; then
+  echo ""
+  echo "✖ CSS 风格检查未通过。常见原因："
+  echo "  - 硬编码颜色（#xxx / rgb()）→ 改用 var(--amber) / var(--text) 等 tokens"
+  echo "  - 使用了 !important"
+  echo ""
+  echo "自动修复：npm run lint:css:fix"
+  echo "查设计系统规范：docs/DESIGN-SYSTEM.md"
+  exit 1
+fi
+
+exit 0

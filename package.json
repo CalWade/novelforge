@@ -1,0 +1,14 @@
+{
+  "name": "novelforge-css-lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stylelint guard for web/static/css/. Run: npm run lint:css",
+  "scripts": {
+    "lint:css": "stylelint 'web/static/css/**/*.css'",
+    "lint:css:fix": "stylelint 'web/static/css/**/*.css' --fix"
+  },
+  "devDependencies": {
+    "stylelint": "^16.10.0",
+    "stylelint-config-standard": "^36.0.1"
+  }
+}
