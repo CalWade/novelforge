@@ -1,0 +1,57 @@
+{% extends "presets/_base.html" %}
+{% block title %}任务 {{ job_id }} · Novelforge{% endblock %}
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/jobs.css') }}">
+{% endblock %}
+{% block crumbs %}
+<a href="/">作品</a>
+<span class="crumb-sep">›</span>
+<a href="/jobs">题材任务</a>
+<span class="crumb-sep">›</span>
+<span class="is-current">{{ job_id }}</span>
+{% endblock %}
+{% block content %}
+<div class="page job-detail-page" data-job-id="{{ job_id }}">
+  <header class="page-header">
+    <h1 id="job-label">任务 {{ job_id }}</h1>
+    <div class="job-actions">
+      <span id="job-state-badge" class="badge">…</span>
+      <button id="btn-abort" class="btn btn-danger" style="display:none">中止</button>
+      <button id="btn-delete" class="btn btn-ghost" style="display:none">删除</button>
+    </div>
+  </header>
+
+  <!-- 节点图 -->
+  <section class="pipeline-diagram">
+    {% for phase in ["extract", "merge", "draft", "validate"] %}
+    <div class="phase-node" data-phase="{{ phase }}">
+      <div class="phase-circle"><span class="phase-icon">○</span></div>
+      <div class="phase-name">{{ phase }}</div>
+      <div class="phase-sub" data-sub="{{ phase }}"></div>
+    </div>
+    {% if not loop.last %}<div class="phase-arrow">→</div>{% endif %}
+    {% endfor %}
+  </section>
+
+  <!-- 元数据 -->
+  <section class="job-meta">
+    <dl>
+      <dt>类型</dt><dd id="job-kind">—</dd>
+      <dt>目标</dt><dd id="job-target">—</dd>
+      <dt>开始</dt><dd id="job-started">—</dd>
+      <dt>更新</dt><dd id="job-updated">—</dd>
+      <dt>结束</dt><dd id="job-finished">—</dd>
+    </dl>
+    <div id="job-error" class="job-error" style="display:none"></div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="job-log">
+    <h2>运行日志</h2>
+    <pre id="log-pane"></pre>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/features/jobDetail.js') }}"></script>
+{% endblock %}
