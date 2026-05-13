@@ -70,6 +70,32 @@ export function renderPills() {
   syncProjectButton();
   syncReadonlyBanner();
   autofillRunChapter();
+
+  // Running genre-extract jobs pill (Task 16).
+  // Fire-and-forget: the pill hides itself on error, so a missing /api/jobs
+  // endpoint (e.g. during local dev) never breaks the rest of the top bar.
+  renderJobsPill();
+}
+
+// Top-bar pill showing count of running genre-extract jobs.
+// Hidden when there are no running jobs; links to /jobs?state=running.
+export async function renderJobsPill() {
+  const el = document.getElementById('pill-jobs');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/jobs?state=running');
+    if (!r.ok) return;
+    const { jobs } = await r.json();
+    if (!jobs || jobs.length === 0) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = '';
+      el.innerHTML = `<a href="/jobs?state=running">⚙ ${jobs.length} 个题材任务运行中</a>`;
+    }
+  } catch {
+    // 网络错误静默隐藏，不破坏首页
+    el.style.display = 'none';
+  }
 }
 
 // Inject the active setting's title + subtitle into the top-bar brand line,
