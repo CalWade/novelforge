@@ -13,6 +13,9 @@
   background: #0d121a;
   padding: 0 12px;
   gap: 2px;
+  /* 锁定高度：作品/题材视图 tabs 数量不同（题材隐藏 bookkeeping/debt/rules），
+     不锁高度会切换时出现 1px 抖动 */
+  min-height: 42px;
 }
 .tab {
   background: transparent;
