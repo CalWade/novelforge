@@ -130,20 +130,37 @@ BOOK_ARC_THRESHOLD = core.BOOK_ARC_THRESHOLD
 
 
 def _run_draft(bb: Blackboard, preset_id: str):
-    """Populate the blueprint via ``core.run_draft`` then render files into
-    ``presets/<id>/``. New callers that want custom output should use
-    ``core.run_draft`` + ``core.render_files_from_blueprint`` directly.
+    """Populate the blueprint via ``core.run_draft`` then render real files
+    (era.md / writing-style-extra.md / iron-laws-extra.md and optionally
+    resource_schema.yaml) into ``presets/<id>/`` from that blueprint.
+
+    Previously this delegated to ``_render_files_from_blueprint`` below,
+    which only writes *stubs* and intentionally never overwrites existing
+    files. The result: ``run_phase(preset_id, phase="draft")`` silently
+    succeeded without updating era.md / writing-style-extra.md / etc.
+    from the freshly-produced blueprint. We now call the real renderer
+    in :mod:`genre_extractor.core` so drafting actually drafts.
     """
     core.run_draft(bb, preset_id)
-    _render_files_from_blueprint(bb, preset_id)
+    blueprint = bb.read_yaml("genre_blueprint.yaml") or {}
+    preset_dir = config.PRESETS_DIR / preset_id
+    core.render_files_from_blueprint(blueprint, out_dir=preset_dir)
 
 
 def _render_files_from_blueprint(bb: Blackboard, preset_id: str):
-    """Deterministic template fill. v1 = only ensure the 4 stubs exist.
+    """Deterministic stub filler — ensures the 4 preset files *exist*.
 
-    Production rendering (reading blueprint.era_observations -> era.md paragraphs,
-    blueprint.iron_law_candidates -> iron_law_extra_N sections) is deferred to
-    a follow-up iteration so v1 can focus on schema plumbing.
+    .. warning:: This is NOT the function you want if you mean "take
+       the fresh blueprint and materialise it to disk". For that, use
+       ``src.genre_extractor.core.render_files_from_blueprint(blueprint,
+       out_dir=...)``, which actually reads ``blueprint['era']['content']``
+       etc. and writes them.
+
+    This legacy helper only fills missing placeholders and never
+    overwrites real content — it's used by :func:`fill_preset` to seed
+    an empty preset directory with writable stubs so authors / the
+    Validator have something to work with. ``_run_draft`` no longer
+    calls it.
     """
     preset_dir = config.PRESETS_DIR / preset_id
     preset_dir.mkdir(parents=True, exist_ok=True)
@@ -379,6 +396,12 @@ def fill_preset(preset_id: str) -> dict:
 
 def audit_preset(preset_id: str) -> dict:
     """Run Validator stages 1 + 2. Returns summary."""
+    # Fail fast on unknown presets — `_build_bb` below would otherwise
+    # silently `mkdir` a brand-new `.build/` under a non-existent preset
+    # and report a clean "ok" verdict on an empty directory.
+    preset_dir = config.PRESETS_DIR / preset_id
+    if not preset_dir.exists():
+        raise FileNotFoundError(f"preset not found: {preset_id}")
     bb = _build_bb(preset_id)
     # Ensure a build_status exists so helpers work; if not, create a minimal one.
     if not bb.exists("build_status.yaml"):
@@ -402,6 +425,11 @@ def audit_preset(preset_id: str) -> dict:
 
 def run_phase(preset_id: str, *, phase: str, with_trial: bool = False) -> dict:
     """Intent-router entry: rerun a single phase. Build status must already exist."""
+    # Fail fast on unknown presets — same reasoning as audit_preset:
+    # _build_bb would silently mkdir under a non-existent preset.
+    preset_dir = config.PRESETS_DIR / preset_id
+    if not preset_dir.exists():
+        raise FileNotFoundError(f"preset not found: {preset_id}")
     bb = _build_bb(preset_id)
     if not bb.exists("build_status.yaml"):
         raise FileNotFoundError(
@@ -416,6 +444,15 @@ def run_phase(preset_id: str, *, phase: str, with_trial: bool = False) -> dict:
             if p.exists():
                 stream = ChapterStream(p)
                 source_streams.append((stream, src["batch_size"]))
+        # Guard: silently succeeding on zero streams gives users a false
+        # "ok" and stalls the funnel. If build_status has no resolvable
+        # sources, tell the caller clearly rather than write zero batches
+        # and mark the phase done.
+        if not source_streams:
+            raise ValueError(
+                f"preset {preset_id} has no resolvable novel_sources in "
+                f"build_status.yaml; run --to-preset first to seed it"
+            )
         _run_extract(bb, source_streams)
     elif phase == "merge":
         _run_merge(bb)

@@ -180,7 +180,21 @@ def extract_to_preset(
 
     result = {"preset_id": preset_id, "sources": [str(p) for p in resolved_sources]}
     if with_trial:
+        # Use the canonical trial.run_trial(genre_id, bb, chapters=3) API.
+        # It writes its summary into ``bb/genre_issues.jsonl`` directly and
+        # returns None — so we don't stuff a ``result["trial"]`` key here
+        # (previous code called a phantom ``run_trial_against_preset``, which
+        # 100%-AttributeError'd whenever users ticked the "trial" box).
+        # Trial failures must not break the extract result — log + swallow.
         from src.genre_extractor import trial
-        result["trial"] = trial.run_trial_against_preset(preset_id)
+        try:
+            trial.run_trial(preset_id, bb, chapters=3)
+        except Exception as e:
+            bb.append_jsonl("genre_issues.jsonl", {
+                "severity": "warning",
+                "file": "(trial)",
+                "message": f"trial run failed: {type(e).__name__}: {e}",
+                "genre_id": preset_id,
+            })
     _safe_phase(on_phase, "done")
     return result

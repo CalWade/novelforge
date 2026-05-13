@@ -161,7 +161,18 @@ def extract_to_project(
 
     result = {"book_id": book_id, "sources": [str(p) for p in resolved]}
     if with_trial:
-        from src.genre_extractor import trial
-        result["trial"] = trial.run_trial_against_project(book_id)
+        # Pragmatic gap: trial.run_trial internally requires
+        # ``config.PRESETS_DIR / genre_id`` to exist (it bootstraps a
+        # throwaway project from a preset dir). Book dirs don't live
+        # under PRESETS_DIR, and the book is about to run its own real
+        # chapters anyway — so a trial here would be both broken and
+        # redundant. We keep the API signature stable and surface the
+        # skip as an info-level note in genre_issues.jsonl.
+        bb.append_jsonl("genre_issues.jsonl", {
+            "severity": "info",
+            "file": "(trial)",
+            "message": "with_trial 在作品路径暂不支持（作品本身即将跑真实章节）；跳过",
+            "project_id": book_id,
+        })
     _safe_phase(on_phase, "done")
     return result
