@@ -1414,6 +1414,255 @@ function wireTabs() {
     b.addEventListener('click', () => setRightTab(b.dataset.rtab)));
 }
 
+function openSourceEditor() {
+  const dlg = $('#dlg-sources');
+  const pid = (state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project) || '—';
+  $('#src-active-project').textContent = pid;
+  initSourceEditor('[data-scope="standalone"]');
+  dlg.showModal();
+}
+
+function initSourceEditor(scopeSel) {
+  const scope = document.querySelector(`.src-editor${scopeSel}`);
+  if (!scope) return;
+  const tabs = scope.querySelectorAll('.src-tab');
+  const area = scope.querySelector('[data-src-area]');
+  const err = scope.querySelector('[data-src-error]');
+  const saveBtn = scope.querySelector('[data-src-save]');
+
+  // Initial state: activate first tab + load
+  tabs.forEach((t) => t.classList.remove('is-active'));
+  tabs[0].classList.add('is-active');
+  loadSourceFile(scope, tabs[0].dataset.src);
+
+  tabs.forEach((t) => {
+    t.onclick = () => {
+      tabs.forEach((x) => x.classList.toggle('is-active', x === t));
+      loadSourceFile(scope, t.dataset.src);
+    };
+  });
+
+  saveBtn.onclick = async () => {
+    const active = scope.querySelector('.src-tab.is-active');
+    if (!active) return;
+    const name = active.dataset.src;
+    err.hidden = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
+    try {
+      await apiCall('/api/project-files', {
+        method: 'PUT',
+        body: JSON.stringify({ name, content: area.value }),
+      });
+      toast(`已保存 · ${name} · state 已重新同步`);
+      pollState();
+    } catch (e) {
+      err.textContent = '保存失败: ' + e.message;
+      err.hidden = false;
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = scope.dataset.scope === 'wizard' ? '保存当前页' : '保存';
+    }
+  };
+}
+
+async function loadSourceFile(scope, name) {
+  const area = scope.querySelector('[data-src-area]');
+  const err = scope.querySelector('[data-src-error]');
+  err.hidden = true;
+  area.value = '加载中…';
+  area.disabled = true;
+  try {
+    const body = await apiCall('/api/project-files?name=' + encodeURIComponent(name));
+    area.value = body.content || '';
+  } catch (e) {
+    area.value = '';
+    err.textContent = `无法加载 ${name}: ${e.message}`;
+    err.hidden = false;
+  } finally {
+    area.disabled = false;
+  }
+}
+
+// =========================================================
+//  SETTINGS (.env editor)
+// =========================================================
+
+async function openSettingsDialog() {
+  const dlg = $('#dlg-settings');
+  const errEl = $('#st-error');
+  errEl.hidden = true;
+  // Reset password fields every open (blank = keep current)
+  $('#st-deepseek-key').value = '';
+  $('#st-perplexity-key').value = '';
+
+  // Load current env into the form
+  try {
+    const env = await apiCall('/api/env');
+    setHint('st-deepseek-key',  env.DEEPSEEK_API_KEY);
+    setHint('st-perplexity-key', env.PERPLEXITY_API_KEY);
+    $('#st-deepseek-base').value  = (env.DEEPSEEK_BASE_URL  && env.DEEPSEEK_BASE_URL.value)  || '';
+    $('#st-deepseek-model').value = (env.DEEPSEEK_MODEL     && env.DEEPSEEK_MODEL.value)     || '';
+    $('#st-perplexity-base').value  = (env.PERPLEXITY_BASE_URL  && env.PERPLEXITY_BASE_URL.value)  || '';
+    $('#st-perplexity-model').value = (env.PERPLEXITY_MODEL     && env.PERPLEXITY_MODEL.value)     || '';
+  } catch (e) {
+    errEl.textContent = '加载 .env 失败: ' + e.message;
+    errEl.hidden = false;
+  }
+
+  // Wire the submit handler (reset each open to avoid stacking)
+  $('#settings-form').onsubmit = (e) => {
+    e.preventDefault();
+    saveSettings();
+  };
+
+  dlg.showModal();
+}
+
+function setHint(fieldId, meta) {
+  const hint = document.querySelector(`[data-hint-for="${fieldId}"]`);
+  if (!hint) return;
+  if (!meta) { hint.textContent = ''; return; }
+  if (meta.set) {
+    hint.textContent = `当前已设置 · ${meta.preview || ''} （留空则保留）`;
+  } else {
+    hint.textContent = '尚未设置';
+  }
+}
+
+async function saveSettings() {
+  const errEl = $('#st-error');
+  errEl.hidden = true;
+  const payload = {};
+  // Sensitive: only send if user actually typed something (blank = keep).
+  const dsKey = $('#st-deepseek-key').value;
+  if (dsKey) payload.DEEPSEEK_API_KEY = dsKey;
+  const pxKey = $('#st-perplexity-key').value;
+  if (pxKey) payload.PERPLEXITY_API_KEY = pxKey;
+  // Non-sensitive: always send current form value (blank means "delete this key")
+  payload.DEEPSEEK_BASE_URL  = $('#st-deepseek-base').value;
+  payload.DEEPSEEK_MODEL     = $('#st-deepseek-model').value;
+  payload.PERPLEXITY_BASE_URL  = $('#st-perplexity-base').value;
+  payload.PERPLEXITY_MODEL     = $('#st-perplexity-model').value;
+
+  if (Object.keys(payload).length === 0) {
+    errEl.textContent = '没有要保存的字段';
+    errEl.hidden = false;
+    return;
+  }
+
+  try {
+    const r = await apiCall('/api/env', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    toast(`已保存 · 更新了 ${r.updated.length} 个字段`);
+    $('#dlg-settings').close();
+  } catch (e) {
+    errEl.textContent = '保存失败: ' + e.message;
+    errEl.hidden = false;
+  }
+}
+
+// =========================================================
+//  ONBOARDING (gating check on first paint)
+// =========================================================
+
+async function checkOnboarding() {
+  // Returns { needed: bool, step: 'key' | 'project' | null }
+  let envOk = false;
+  try {
+    const env = await apiCall('/api/env');
+    envOk = !!(env.DEEPSEEK_API_KEY && env.DEEPSEEK_API_KEY.set);
+  } catch (_) { /* treat as not ok */ }
+
+  if (!envOk) return { needed: true, step: 'key' };
+
+  const pid = state.snapshot && state.snapshot.progress && state.snapshot.progress.active_project;
+  if (!pid) {
+    // Fallback: also check /api/projects in case progress.json wasn't primed
+    try {
+      const { active } = await apiCall('/api/projects');
+      if (!active) return { needed: true, step: 'project' };
+    } catch (_) {
+      return { needed: true, step: 'project' };
+    }
+  }
+  return { needed: false };
+}
+
+async function showOnboarding(step) {
+  const overlay = $('#onboarding');
+  overlay.hidden = false;
+  showOnboardingStep(step);
+  if (step === 'key') wireOnboardingKey();
+  if (step === 'project') await wireOnboardingProjects();
+}
+
+function showOnboardingStep(step) {
+  $$('.onb-step').forEach((n) => { n.hidden = n.dataset.step !== step; });
+}
+
+function wireOnboardingKey() {
+  const form = $('#onb-key-form');
+  const errEl = $('#onb-key-error');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    errEl.hidden = true;
+    const ds = $('#onb-deepseek').value.trim();
+    const px = $('#onb-perplexity').value.trim();
+    if (!ds) {
+      errEl.textContent = 'DEEPSEEK_API_KEY 必填';
+      errEl.hidden = false;
+      return;
+    }
+    const payload = { DEEPSEEK_API_KEY: ds };
+    if (px) payload.PERPLEXITY_API_KEY = px;
+    try {
+      await apiCall('/api/env', { method: 'POST', body: JSON.stringify(payload) });
+      toast('已保存 · 正在检查作品…');
+      // Advance to project step (re-check in case already activated)
+      showOnboardingStep('project');
+      await wireOnboardingProjects();
+    } catch (e2) {
+      errEl.textContent = e2.message;
+      errEl.hidden = false;
+    }
+  };
+}
+
+async function wireOnboardingProjects() {
+  const grid = $('#onb-project-grid');
+  grid.innerHTML = '<div class="project-grid-loading">加载作品列表…</div>';
+  try {
+    const { active, projects } = await apiCall('/api/projects');
+    // If somehow an active project already exists, skip onboarding.
+    if (active) {
+      $('#onboarding').hidden = true;
+      location.reload();
+      return;
+    }
+    renderProjectGrid(grid, projects, active, {
+      onActivate: async (pid) => {
+        try {
+          await apiCall('/api/projects/activate', {
+            method: 'POST',
+            body: JSON.stringify({ id: pid }),
+          });
+          toast('已激活 · 正在加载…');
+          setTimeout(() => location.reload(), 400);
+        } catch (e) {
+          toast('激活失败: ' + e.message, true);
+        }
+      },
+      onNew: openNewProjectWizard,
+    });
+  } catch (e) {
+    grid.innerHTML = '';
+    grid.appendChild(el('div', { class: 'form-error' }, '加载作品列表失败: ' + e.message));
+  }
+}
+
 function wireButtons() {
   // Run panel
   $('#run-mode').addEventListener('change', () => { syncRunFields(); });
