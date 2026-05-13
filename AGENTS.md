@@ -255,6 +255,27 @@ Planner 自动读取该文件（存在时），用其中的五感词组改写 `p
 4. `HookTaxonomyMiner` → `hook_type_taxonomy.yaml`：题材特有的伏笔类型分类
 5. `SettingSeedMiner` → 扩展 setting.yaml 增加 `chapter_type_weights` 等题材级建议
 
+## 创作辅助 · NovelDNA Synthesizer
+
+从 N 本素材小说融合创造一个**新奇、同框架换核心设定**的新 preset：
+
+```bash
+python -m src.genre_extractor.miners.novel_dna <preset_id> novels/a.txt novels/b.txt novels/c.txt
+
+# 可选参数
+#   --seed <N>              固定随机窗口采样，可复现
+#   --windows-per-book <N>  每本抽几个 5 章窗口（默认 7）
+#   --hint "..."            给融合阶段的额外要求
+#   --dry-run               只跑 Stage 1 产 DNA 卡不合成 preset
+```
+
+两阶段工作流（~5-8 分钟，~25 次 LLM 调用）：
+
+1. **Stage 1 — 单本 DNA 卡**：每本小说按全书均匀分布随机抽 7 个 5 章窗口，并发分析每窗口的"情节起承转合 / 语言风格 / 信息释放 / 人物操作 / 爽点配方 / 钩子配方"，再 1 次综合调用压缩为一份 DNA 卡（Markdown，~100 行）。产物：`docs/novel_dna/<book>.md` + `presets/<preset_id>/dna_cards/<book>.md`
+2. **Stage 2 — 同框架换核心设定**：读所有 DNA 卡，识别共性戏剧框架（末世感/系统/群像/主角秘密身份等），**但核心设定完全原创**（LLM 被严格约束不得使用源小说的专属名词）。产物：完整 preset 目录，含 `genre.yaml / era.md / writing-style-extra.md / iron-laws-extra.md`（iron-laws 第 1 条是禁区清单——列出源小说的核心专属名词作为硬禁止）
+
+**与 Genre-Mining v2 的关系**：本工具是**创作助手**（一次性生成新 preset），不是**生产时的 miner**（每个作品循环中做样本查表）。两者互补。
+
 ## 规则索引（Progressive Disclosure）
 
 规则分两层：通用（`rules/`）+ 作品目录内的题材特有文件（经 bootstrap 拷入 `state/`）。每个 Agent 只加载它需要的那 1-2 份。
