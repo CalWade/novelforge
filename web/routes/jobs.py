@@ -45,6 +45,20 @@ def create_job():
     if not isinstance(target, dict) or target.get("type") not in ("preset", "project"):
         return jsonify({"error": "bad target"}), 400
 
+    # Pre-flight: 对于新建 preset 的 kind，如果 target 目录已经存在，
+    # 直接 409 拒绝，避免用户提交后才在详情页看到 "Preset already exists"。
+    # （extract-to-project 是覆盖语义，允许目录已存在。）
+    from src import config
+    if kind in ("from-novel", "from-description", "blank"):
+        preset_dir = config.PRESETS_DIR / target["id"]
+        if preset_dir.exists():
+            return jsonify({
+                "error": (
+                    f"preset '{target['id']}' already exists. "
+                    f"先在题材库删除它，或换一个新 id。"
+                ),
+            }), 409
+
     # Per-target lock
     lock = acquire_target_lock(target["type"], target["id"])
     if lock is None:
