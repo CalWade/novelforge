@@ -70,30 +70,9 @@ def test_wizard_with_synopsis_and_brief(app_, monkeypatch):
     assert r.status_code == 200, r.get_json()
 
 
-def test_wizard_with_extract_runs_in_background(app_, monkeypatch):
-    from src import config
-    (config.PROJECT_ROOT / "novels" / "seed.txt").write_text("x", encoding="utf-8")
-
-    called = {}
-    def fake_extract(book_id, *, sources, with_trial, on_phase=None):
-        called.update(book_id=book_id, sources=list(sources))
-    monkeypatch.setattr("src.genre_extractor.to_project.extract_to_project", fake_extract)
-
-    r = app_.post("/api/projects/new", json={
-        "id": "b4", "display_name": "B4", "protagonist_name": "H",
-        "chapter_count_target": 3,
-        "from_extract": {"sources": ["seed.txt"], "with_trial": False},
-        "blank_outline": True, "blank_characters": True,
-    })
-    assert r.status_code == 202, r.get_json()
-
-    import time
-    for _ in range(40):
-        s = app_.get("/api/projects/b4/extract-genre/progress").get_json()
-        if s.get("state") in ("done", "failed"):
-            break
-        time.sleep(0.05)
-    assert called.get("book_id") == "b4"
+# NOTE: test_wizard_with_extract_runs_in_background was removed — POST
+# /api/projects/new no longer accepts from_extract; extract-to-project is
+# now dispatched via POST /api/jobs.
 
 
 def test_wizard_missing_required_fields(app_):
