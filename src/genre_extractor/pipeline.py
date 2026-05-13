@@ -11,7 +11,6 @@ The build workspace lives at ``presets/<id>/.build/`` and is git-ignored.
 """
 from __future__ import annotations
 
-import threading
 import time
 from pathlib import Path
 
@@ -22,19 +21,13 @@ from src.genre_extractor.chapter_stream import ChapterStream
 
 
 # ---------------------------------------------------------------
-# Cooperative cancellation (used by web abort button + intent router)
-# Mirrors src/pipeline.py::CANCEL_EVENT.
+# Cooperative cancellation used to live here as a module-global
+# ``CANCEL_EVENT`` + ``_check_cancel()`` mirroring ``src/pipeline.py``.
+# It was never actually wired into any stage, so genre jobs could not
+# be aborted. The real cancel plumbing now lives in
+# :mod:`src.jobs.cancel` (``CancelToken`` / ``ThreadEventToken``) and is
+# threaded explicitly through ``to_preset`` / ``to_project`` / ``core``.
 # ---------------------------------------------------------------
-CANCEL_EVENT = threading.Event()
-
-
-class GenrePipelineAborted(RuntimeError):
-    """Raised when CANCEL_EVENT is set between stages."""
-
-
-def _check_cancel() -> None:
-    if CANCEL_EVENT.is_set():
-        raise GenrePipelineAborted("genre pipeline aborted by cancel signal")
 
 
 STUB_GENRE_YAML = """# Preset: {preset_id}
