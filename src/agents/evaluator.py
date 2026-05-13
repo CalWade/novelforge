@@ -16,6 +16,8 @@ Reads (everything under state/ is setting-injected via bootstrap):
   - state/characters.yaml
   - state/timeline.yaml
   - state/iron-laws-extra.md  — setting-specific iron laws
+  - state/current_status_card.md  — Lesson-3 authoritative "who knows what" snapshot (optional)
+  - state/pending_hooks.md        — Lesson-3 active-hooks pool (optional)
   - rules/18-landmines.md     — universal landmines
   - rules/24-iron-laws.md     — universal iron laws
 
@@ -47,6 +49,11 @@ class Evaluator(BaseAgent):
         characters = bb.read_text("characters.yaml")
         timeline = bb.read_text("timeline.yaml")
         iron_laws_extra = bb.read_text("iron-laws-extra.md")
+        # Read Lesson-3 bookkeeping — these are the authoritative "who knows what"
+        # snapshots. Critical for landmine_10 (反派信息越界 / 人设前后矛盾)
+        # and landmine_13 (世界观矛盾). Absent/empty files are tolerated (chapter 1).
+        status_card = bb.read_text("current_status_card.md") if bb.exists("current_status_card.md") else ""
+        pending_hooks = bb.read_text("pending_hooks.md") if bb.exists("pending_hooks.md") else ""
         landmines = self._read_rule("18-landmines.md")
         iron_laws = self._read_rule("24-iron-laws.md")
         info_priority = self._read_rule("00-information-priority.md")
@@ -67,6 +74,16 @@ class Evaluator(BaseAgent):
             "rules/24-iron-laws.md",
             "rules/00-information-priority.md",
         ]
+        # Only log the Lesson-3 bookkeeping files when they actually carry content.
+        # Listing empty/absent files in inputs_read would falsely suggest to the
+        # Inspector (and to future debuggers) that the Evaluator had a "who knows
+        # what" snapshot to cross-check against — they'd then mis-attribute any
+        # missed landmine_10 hit to a reading failure rather than to a genuinely
+        # absent card (e.g. chapter 1 before StatusCardUpdater has ever run).
+        if status_card.strip():
+            inputs_read.append("state/current_status_card.md")
+        if pending_hooks.strip():
+            inputs_read.append("state/pending_hooks.md")
 
         system = (
             f"你是业内以刁钻著称的资深网文主编，在本题材（{genre} · {era_label}）做了 20 年。\n"
@@ -103,6 +120,15 @@ class Evaluator(BaseAgent):
             "  landmine_13（世界观模糊/脱离现实）命中。\n"
             "- 如果稿件违反题材特有铁律（iron-laws-extra.md），必须在\n"
             "  landmine_10 或 landmine_13 命中，evidence 中说明违反了哪条 iron_law_extra_N。\n"
+            "- 如果 `current_status_card.md` 的「已知真相」表明某信息**反派不应知道**，\n"
+            "  而章节中反派表现出知情（或反向：只有反派知道的信息，主角在无合理推理链下\n"
+            "  突然知晓），必须在 landmine_10 命中，evidence 引**章节原文具体句子** +\n"
+            "  引**状态卡对应条目**（例如 `状态卡·已知真相·『X 情报』反派知否=否`）。\n"
+            "- 如果 `pending_hooks.md` 的「活跃伏笔」与本章情节矛盾——例如本章回收了某\n"
+            "  hook_id，但回收方式与该伏笔的类型/当前状态定义不符；或本章推进了某伏笔\n"
+            "  的方向与伏笔表中记录的既定走向相反——必须在 landmine_10 或 landmine_13\n"
+            "  命中，evidence 需同时引原文和对应 hook_id 行。\n"
+            "- 以上两条当状态卡 / 伏笔池**未提供**（首章或尚未产出）时不适用，不要为此扣分。\n"
             "\n"
             "# 叙事技术层专项自查（校准集数据表明 Evaluator 易漏此类）\n"
             "\n"
@@ -158,12 +184,33 @@ class Evaluator(BaseAgent):
         # NOTE: we intentionally do NOT embed a skeleton with "…" placeholders
         # in the user prompt schema — that was the root cause of the "Evaluator
         # returned skeleton" bug. Instead we describe the required keys.
+        # Build an optional "authoritative current-state" block. We only include
+        # these sections when the files carry content — an empty block would
+        # dilute the prompt and risk the LLM fabricating violations against a
+        # non-existent snapshot.
+        bookkeeping_block = ""
+        if status_card.strip():
+            bookkeeping_block += (
+                "\n# 当前时间点权威状态卡 (current_status_card.md)\n"
+                "> 以下是章节结束时的『谁知道什么 / 当前敌我 / 活跃伏笔』权威快照。\n"
+                "> 用于交叉验证『反派信息越界』『伏笔回收不符』等问题。\n\n"
+                f"```markdown\n{status_card}\n```\n"
+            )
+        if pending_hooks.strip():
+            bookkeeping_block += (
+                "\n# 活跃伏笔池 (pending_hooks.md)\n"
+                "> 以下是进入本章前尚未回收的伏笔池。本章对任一 hook_id 的推进/回收\n"
+                "> 必须与其既定类型和当前状态自洽。\n\n"
+                f"```markdown\n{pending_hooks}\n```\n"
+            )
+
         user = (
             f"# 本章节（第 {chapter} 章）全文\n\n"
             f"{chapter_text}\n\n"
             f"# 人物档案 (characters.yaml)\n\n```yaml\n{characters}\n```\n\n"
-            f"# 时间线 (timeline.yaml)\n\n```yaml\n{timeline}\n```\n\n"
-            f"# 输出 JSON 结构（严格遵守）\n\n"
+            f"# 时间线 (timeline.yaml)\n\n```yaml\n{timeline}\n```\n"
+            f"{bookkeeping_block}"
+            f"\n# 输出 JSON 结构（严格遵守）\n\n"
             "必须包含以下字段：\n"
             "- `overall_pass` (boolean)\n"
             "- `landmines`：对象，包含 `landmine_1` 到 `landmine_18` 全部 18 键，\n"

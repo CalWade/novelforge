@@ -6,8 +6,9 @@ become inputs to the creative agents beyond what we explicitly designed:
   Reset is for).
 - Generator: does NOT read status card / pending hooks / resource ledger
   (it reads only plan.json + characters + era + style).
-- Evaluator: does NOT read status card / pending hooks / resource ledger
-  (it judges the prose against the rules, not the ledgers).
+- Evaluator: reads status_card + pending_hooks (P0-4: needed for
+  landmine_10 反派信息越界 / 伏笔回收一致性). Does NOT read resource_ledger
+  (Evaluator judges prose vs. rules, not derived numeric ledgers).
 - Summarizer: does NOT read plan / verdict / status card / hooks.
 """
 from __future__ import annotations
@@ -72,13 +73,17 @@ def test_generator_does_not_read_ledgers(fully_seeded_bb):
     assert "state/resource_schema.yaml" not in inputs
 
 
-def test_evaluator_does_not_read_ledgers(fully_seeded_bb):
-    """Evaluator must judge prose against rules, not derived ledgers."""
+def test_evaluator_does_not_read_resource_ledger(fully_seeded_bb):
+    """Evaluator cross-checks prose against the authoritative 'who-knows-what'
+    snapshots (status_card + pending_hooks — added in P0-4), but must NOT
+    read the numeric resource ledger: resource balance is a derived artifact
+    and judging prose against it would be a framing leak."""
     _, _, inputs = Evaluator()._build_prompts(fully_seeded_bb, chapter=1)
-    assert "state/current_status_card.md" not in inputs
-    assert "state/pending_hooks.md" not in inputs
     assert "state/resource_ledger.md" not in inputs
     assert "state/resource_schema.yaml" not in inputs
+    # Positive assertion (P0-4): status card + pending hooks ARE inputs.
+    assert "state/current_status_card.md" in inputs
+    assert "state/pending_hooks.md" in inputs
 
 
 def test_summarizer_is_isolated_from_everything_but_prose(fully_seeded_bb):
