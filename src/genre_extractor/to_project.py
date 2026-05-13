@@ -13,7 +13,8 @@ from typing import Callable, Optional
 
 from src import config
 from src.blackboard import Blackboard
-from src.genre_extractor import core
+from src.genre_extractor import core, schemas
+from src.genre_extractor.chapter_stream import ChapterStream
 from src.genre_extractor.to_preset import _resolve_source
 
 GENRE_FILES = (
@@ -45,7 +46,7 @@ def _safe_phase(on_phase: Optional[PhaseCallback], phase: str, progress: Optiona
 
 def _run_full_extraction_to_blueprint(
     bb: Blackboard,
-    sources: list[Path],
+    sources: list,
     *,
     on_phase: Optional[PhaseCallback] = None,
 ) -> dict:
@@ -53,16 +54,19 @@ def _run_full_extraction_to_blueprint(
 
     Own function so tests can monkeypatch to avoid LLMs.
 
+    ``sources`` is a list of :class:`ChapterStream` instances owned by the
+    caller. They must remain alive for the whole call (they hold a
+    tempfile via ``__del__`` for non-UTF-8 source novels).
+
     Fires ``on_phase("extract" | "merge" | "draft")`` at the start of each
     stage so the Web UI can paint a live phase-timeline.
     """
     _safe_phase(on_phase, "extract")
-    streams = [open(p, "r", encoding="utf-8") for p in sources]
-    try:
-        core.run_extract(bb, streams)
-    finally:
-        for s in streams:
-            s.close()
+    # core.run_extract expects (ChapterStream, batch_size) tuples.
+    core.run_extract(
+        bb,
+        [(s, core.DEFAULT_EXTRACTION_BATCH_SIZE) for s in sources],
+    )
     _safe_phase(on_phase, "merge")
     core.run_merge(bb)
     _safe_phase(on_phase, "draft")
@@ -105,7 +109,33 @@ def extract_to_project(
             shutil.copy2(src, backup_dir / backup_name)
 
     bb = Blackboard(root=build_dir)
-    blueprint = _run_full_extraction_to_blueprint(bb, resolved, on_phase=on_phase)
+
+    # Build ChapterStream instances up front (mirrors extract_to_preset):
+    # surfaces encoding errors, gives us total_chapters for the
+    # build_status seed, and avoids re-parsing. Held in this local so
+    # their tempfile-cleaning __del__ only fires after the whole pipeline
+    # finishes.
+    streams = [ChapterStream(p) for p in resolved]
+    novel_sources = [
+        {
+            "path": str(p),
+            "total_chapters": s.total_chapters,
+            "batch_size": core.DEFAULT_EXTRACTION_BATCH_SIZE,
+        }
+        for p, s in zip(resolved, streams)
+    ]
+
+    # Seed build_status.yaml BEFORE run_extract — its first op reads this file.
+    bb.write_yaml(
+        "build_status.yaml",
+        schemas.make_initial_build_status(
+            genre_id=book_id,
+            entry="extract-to-project",
+            novel_sources=novel_sources,
+        ),
+    )
+
+    blueprint = _run_full_extraction_to_blueprint(bb, streams, on_phase=on_phase)
     core.render_files_from_blueprint(blueprint, out_dir=book_dir)
 
     # P0-2: run Validator + Fixer retry loop against the book's own genre

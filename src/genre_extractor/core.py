@@ -34,6 +34,11 @@ from src.genre_extractor.chapter_stream import ChapterStream
 # last arc is promoted to latest_merged directly. See _run_merge_multitier.
 BOOK_ARC_THRESHOLD = 4
 
+# Default chapter batch size for extraction. Kept here (not in a deeper
+# submodule) so to_preset.py / to_project.py can import one canonical value
+# and callers of run_extract don't each pick their own.
+DEFAULT_EXTRACTION_BATCH_SIZE = 25
+
 
 # ---------------------------------------------------------------
 # Text utilities

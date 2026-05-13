@@ -75,5 +75,11 @@ def test_extract_to_preset_resolves_source_paths_via_pool(fake_repo, monkeypatch
     )
     sources = captured["sources"]
     assert len(sources) == 2
-    for p in sources:
-        assert Path(p).exists()
+    # ``sources`` is now a list of ChapterStream instances (one per resolved
+    # source file). The legacy assertion was "each element Path().exists()";
+    # its intent is "source path resolution found real files", so peek at
+    # the stream's recorded source path.
+    from src.genre_extractor.chapter_stream import ChapterStream
+    for s in sources:
+        assert isinstance(s, ChapterStream)
+        assert Path(s._source_path).exists()

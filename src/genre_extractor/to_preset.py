@@ -14,7 +14,8 @@ import yaml
 
 from src import config
 from src.blackboard import Blackboard
-from src.genre_extractor import core
+from src.genre_extractor import core, schemas
+from src.genre_extractor.chapter_stream import ChapterStream
 
 # See to_project.PhaseCallback for contract.
 PhaseCallback = Callable[[str, Optional[str]], None]
@@ -46,7 +47,7 @@ def _resolve_source(path_str: str) -> Path:
 
 def _run_full_extraction_to_blueprint(
     bb: Blackboard,
-    sources: list[Path],
+    sources: list,
     *,
     on_phase: Optional[PhaseCallback] = None,
 ) -> dict:
@@ -54,15 +55,20 @@ def _run_full_extraction_to_blueprint(
 
     Extracted into its own function so tests can monkeypatch to avoid LLMs.
 
+    ``sources`` is a list of :class:`ChapterStream` instances. They must
+    remain alive for the whole call (they own a tempfile via ``__del__``
+    for non-UTF-8 source novels); the caller (``extract_to_preset``) holds
+    them in its own local, so they won't be GC'd mid-run.
+
     Fires ``on_phase("extract" | "merge" | "draft")`` at each stage boundary.
     """
     _safe_phase(on_phase, "extract")
-    streams = [open(p, "r", encoding="utf-8") for p in sources]
-    try:
-        core.run_extract(bb, streams)
-    finally:
-        for s in streams:
-            s.close()
+    # core.run_extract expects an iterable of (ChapterStream, batch_size) tuples.
+    # No open()/close() dance: ChapterStream manages its own tempfile in __del__.
+    core.run_extract(
+        bb,
+        [(s, core.DEFAULT_EXTRACTION_BATCH_SIZE) for s in sources],
+    )
     _safe_phase(on_phase, "merge")
     core.run_merge(bb)
     _safe_phase(on_phase, "draft")
@@ -97,7 +103,40 @@ def extract_to_preset(
     build_dir.mkdir()
 
     bb = Blackboard(root=build_dir)
-    blueprint = _run_full_extraction_to_blueprint(bb, resolved_sources, on_phase=on_phase)
+
+    # Build ChapterStream instances up front (one pass). This:
+    #   1. Surfaces encoding / chapter-marker errors early.
+    #   2. Gives us the per-source total_chapters count needed to seed
+    #      build_status.yaml with a correct ``batches_total``.
+    #   3. Avoids re-parsing: the same instances are handed to
+    #      _run_full_extraction_to_blueprint → core.run_extract.
+    # Held in this function's local so their tempfile-cleaning __del__
+    # doesn't fire until the whole pipeline (including run_merge/run_draft)
+    # is done.
+    streams = [ChapterStream(p) for p in resolved_sources]
+    novel_sources = [
+        {
+            "path": str(p),
+            "total_chapters": s.total_chapters,
+            "batch_size": core.DEFAULT_EXTRACTION_BATCH_SIZE,
+        }
+        for p, s in zip(resolved_sources, streams)
+    ]
+
+    # Seed build_status.yaml BEFORE run_extract runs. core.run_extract's
+    # first action is schemas.update_phase_status(...), which *reads*
+    # build_status.yaml — so if we don't seed it here we crash with
+    # FileNotFoundError before the first batch.
+    bb.write_yaml(
+        "build_status.yaml",
+        schemas.make_initial_build_status(
+            genre_id=preset_id,
+            entry="extract-to-preset",
+            novel_sources=novel_sources,
+        ),
+    )
+
+    blueprint = _run_full_extraction_to_blueprint(bb, streams, on_phase=on_phase)
     core.render_files_from_blueprint(blueprint, out_dir=preset_dir)
 
     # seed genre.yaml
