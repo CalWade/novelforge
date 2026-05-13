@@ -1,52 +1,74 @@
-/* =========================================================
-   View switcher — 首页顶栏"作品 / 题材"切换按钮组
-   ========================================================= */
+/* ---------------------------------------------------------
+   View switcher — 首页顶栏 "作品 / 题材" 双档按钮组
+   风格：与 .btn-ghost 一致的深色面板 + hairline 边框 +
+   激活档用琥珀色 (与 .btn-primary 同一语义层)。
+   --------------------------------------------------------- */
 
 .view-switcher {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border, #d0d0d0);
-  border-radius: 8px;
-  background: var(--bg-subtle, #f5f5f5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
   margin-right: 8px;
 }
 
 .view-btn {
   appearance: none;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  padding: 6px 14px;
-  font-size: 0.9rem;
+  padding: 5px 12px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-muted, #666);
+  color: var(--text-dim);
   cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.15s;
-  font-family: inherit;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  font-family: var(--font-ui);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  letter-spacing: 0.005em;
 }
 
-.view-btn:hover {
-  color: var(--text, #222);
-  background: var(--bg, #fff);
+.view-btn:hover:not(.is-active) {
+  color: var(--amber);
+  background: var(--panel);
 }
 
 .view-btn.is-active {
-  background: var(--bg, #fff);
-  color: var(--accent, #2f4fbd);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: linear-gradient(180deg, rgba(255, 180, 84, 0.18), rgba(255, 180, 84, 0.06));
+  border-color: var(--amber-dim);
+  color: var(--amber);
   font-weight: 600;
 }
 
 .view-btn .btn-glyph {
-  font-size: 1rem;
+  font-size: 10px;
+  opacity: 0.85;
 }
 
-/* Genre job selector 样式（隐藏时由 display:none 控制） */
+/* Genre job selector — 与 .run-select 同语义层（见 runControls.css / form.css） */
 #genre-job-selector {
-  max-width: 280px;
+  max-width: 320px;
   margin-right: 8px;
+  /* 字体与尺寸对齐 .run-select (run panel 下拉) 以保证顶栏排版一致 */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+#genre-job-selector:hover {
+  border-color: var(--amber-dim);
+}
+
+#genre-job-selector:focus {
+  outline: none;
+  border-color: var(--amber-dim);
+  box-shadow: 0 0 0 1px var(--amber-dim);
 }
