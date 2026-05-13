@@ -9,6 +9,38 @@ import pytest
 from src import bootstrap, config
 
 
+# --- web/static/js/ helpers --------------------------------------------------
+#
+# After P1-17, the old monolithic `web/static/main.js` was split into ES
+# modules under `web/static/js/` (main.js entry + ui/ + features/). Tests
+# that previously did `(REPO / "web" / "static" / "main.js").read_text()`
+# now read the concatenation of all modules via these helpers — the string
+# assertions (URL paths, agent names, function names, CSS selectors) still
+# work because they're content-based, not parser-based.
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_WEB_JS_DIR = _REPO_ROOT / "web" / "static" / "js"
+
+
+def read_web_main_js() -> str:
+    """Return the concatenation of every .js file under web/static/js/.
+
+    Stable replacement for `(repo / "web" / "static" / "main.js").read_text()`.
+    """
+    parts = []
+    for p in sorted(_WEB_JS_DIR.rglob("*.js")):
+        parts.append(f"/* === {p.relative_to(_REPO_ROOT)} === */\n")
+        parts.append(p.read_text(encoding="utf-8"))
+        parts.append("\n")
+    return "".join(parts)
+
+
+@pytest.fixture
+def web_main_js_source() -> str:
+    """Fixture form of read_web_main_js() for tests that prefer DI style."""
+    return read_web_main_js()
+
+
 @pytest.fixture
 def isolated_project(tmp_path, monkeypatch):
     """Create a throwaway bootstrapped project in tmp_path; return its id.

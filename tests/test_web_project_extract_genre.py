@@ -35,7 +35,7 @@ def app_with_book(tmp_path: Path, monkeypatch):
 
 def test_extract_genre_triggers_async(app_with_book, monkeypatch):
     captured = {}
-    def fake_extract(book_id, *, sources, with_trial):
+    def fake_extract(book_id, *, sources, with_trial, on_phase=None):
         captured.update(book_id=book_id, sources=sources)
     monkeypatch.setattr("src.genre_extractor.to_project.extract_to_project", fake_extract)
 
@@ -82,7 +82,7 @@ def test_extract_genre_rebootstraps_when_active(app_with_book, monkeypatch):
     config.set_active_project_id("mybook")
 
     bootstrap_calls = []
-    def fake_extract(book_id, *, sources, with_trial):
+    def fake_extract(book_id, *, sources, with_trial, on_phase=None):
         return None
     monkeypatch.setattr("src.genre_extractor.to_project.extract_to_project", fake_extract)
     monkeypatch.setattr(

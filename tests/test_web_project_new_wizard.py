@@ -75,7 +75,7 @@ def test_wizard_with_extract_runs_in_background(app_, monkeypatch):
     (config.PROJECT_ROOT / "novels" / "seed.txt").write_text("x", encoding="utf-8")
 
     called = {}
-    def fake_extract(book_id, *, sources, with_trial):
+    def fake_extract(book_id, *, sources, with_trial, on_phase=None):
         called.update(book_id=book_id, sources=list(sources))
     monkeypatch.setattr("src.genre_extractor.to_project.extract_to_project", fake_extract)
 

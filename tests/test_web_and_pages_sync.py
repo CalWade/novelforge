@@ -3,6 +3,11 @@
 Ensures the Flask API surface and the static Pages tree both expose
 the new bookkeeping artifacts and info-priority rule added in C-23..C-25
 and B-1.
+
+After P1-17: the web-side main.js was split into ES modules under
+web/static/js/; `read_web_main_js()` (from conftest.py) returns the
+concatenation so content-based assertions still hold. The docs/main.js
+file is the static-pages mirror and remains a single file.
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from src import config
+from tests.conftest import read_web_main_js
 
 
 # ---- Flask API: /api/state now reports bookkeeping presence ----
@@ -96,13 +102,13 @@ def test_docs_main_js_tree_references_bookkeeping_section():
 
 
 def test_web_main_js_declares_new_agents():
-    text = (config.PROJECT_ROOT / "web" / "static" / "main.js").read_text(encoding="utf-8")
+    text = read_web_main_js()
     for agent_name in ("status_card_updater", "hook_keeper", "resource_ledger"):
-        assert agent_name in text, f"web/static/main.js missing AGENT_LABEL/COLOR for {agent_name}"
+        assert agent_name in text, f"web/static/js/** missing AGENT_LABEL/COLOR for {agent_name}"
 
 
 def test_web_main_js_tree_references_bookkeeping_section():
-    text = (config.PROJECT_ROOT / "web" / "static" / "main.js").read_text(encoding="utf-8")
+    text = read_web_main_js()
     assert "current_status_card.md" in text
     assert "pending_hooks.md" in text
     assert "resource_schema.yaml" in text

@@ -5,10 +5,15 @@ Phase 4 · Task 4.7 — verify the index page exposes:
   - three genre-starter radio options (preset / extract / blank)
   - the 覆盖题材 override button + its supporting form fields
   - main.js wires the new endpoints
+
+After P1-17: main.js was split into ES modules; read_web_main_js() from
+conftest.py concatenates them for content-based assertions.
 """
 from __future__ import annotations
 
 from pathlib import Path
+
+from tests.conftest import read_web_main_js
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -41,7 +46,7 @@ def test_index_html_wizard_has_outline_and_characters_textareas():
 
 
 def test_main_js_wires_wizard_and_override():
-    text = (REPO / "web" / "static" / "main.js").read_text(encoding="utf-8")
+    text = read_web_main_js()
     # Wizard submission
     assert "/api/projects/new" in text
     # Override

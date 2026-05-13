@@ -112,7 +112,7 @@ def test_post_new_preset_from_novel_schedules_job(app_with_presets, monkeypatch)
     (config.PROJECT_ROOT / "novels" / "src1.txt").write_text("x", encoding="utf-8")
 
     captured = {}
-    def fake_extract(preset_id, *, sources, with_trial):
+    def fake_extract(preset_id, *, sources, with_trial, on_phase=None):
         captured.update(preset_id=preset_id, sources=list(sources))
         return {"preset_id": preset_id}
     monkeypatch.setattr("src.genre_extractor.to_preset.extract_to_preset", fake_extract)
