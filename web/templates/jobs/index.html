@@ -1,0 +1,28 @@
+{% extends "presets/_base.html" %}
+{% block title %}题材任务 · Novelforge{% endblock %}
+{% block crumbs %}
+<a href="/">作品</a>
+<span class="crumb-sep">›</span>
+<span class="is-current">题材任务</span>
+{% endblock %}
+{% block content %}
+<div class="page jobs-list-page">
+  <header class="page-header">
+    <h1>题材任务</h1>
+    <nav class="filter-tabs" role="tablist">
+      <button data-state="all" class="active">全部</button>
+      <button data-state="running">运行中</button>
+      <button data-state="done">已完成</button>
+      <button data-state="failed">失败</button>
+      <button data-state="aborted">已中止</button>
+      <button data-state="interrupted">中断</button>
+    </nav>
+  </header>
+  <div id="jobs-list" class="jobs-list">
+    <div class="jobs-empty">加载中…</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/features/jobsList.js') }}"></script>
+{% endblock %}
