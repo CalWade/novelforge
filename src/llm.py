@@ -35,6 +35,40 @@ def _log_call(entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+# 模型能力注册表：某些模型服务端强制单一 temperature，传任何其他值都返回 400。
+# 规则：key 是 model id 的匹配前缀/子串，value 是允许的固定 temperature。
+# 匹配时用 substring，不用正则，避免意外误伤。
+# 新模型加到这里即可；若模型接受任意值，不用登记。
+_FIXED_TEMPERATURE_MODELS: dict[str, float] = {
+    "kimi-k2": 0.6,   # 包括 kimi-k2.6 / kimi-k2 等变体
+}
+
+# 用于去重 warning（同一 model 在首次调用时打印一次，避免每次 chat 都刷日志）
+_warned_models: set[str] = set()
+
+
+def _clamp_temperature(model: str, requested: float) -> float:
+    """Clamp temperature if the model has a server-side fixed-value constraint.
+
+    Returns the temperature to actually send. If the model is in the registry
+    and the requested value differs, emit a one-time stderr warning so users
+    see why their agent's temperature setting is being ignored.
+    """
+    for key, fixed in _FIXED_TEMPERATURE_MODELS.items():
+        if key in model:
+            if abs(requested - fixed) > 1e-6 and model not in _warned_models:
+                import sys
+                print(
+                    f"[llm] Model '{model}' requires temperature={fixed}; "
+                    f"requested {requested} will be clamped. "
+                    f"Agent temperature settings degrade to soft hints on this model.",
+                    file=sys.stderr,
+                )
+                _warned_models.add(model)
+            return fixed
+    return requested
+
+
 def chat(
     system: str,
     user: str,
@@ -66,13 +100,18 @@ def chat(
     call_id = str(uuid.uuid4())
     started_at = time.time()
 
+    # 模型能力钳制：部分模型服务端强制单一 temperature（如 kimi-k2.6 只允许 0.6）。
+    # 业务层 agent 设置的 temperature（Planner 0.4 / Generator 0.85 等）在此类
+    # 模型上会退化为服务端允许值——保证流水线能跑，创造性意图退化为软建议。
+    effective_temp = _clamp_temperature(config.LLM_MODEL, temperature)
+
     payload: dict = {
         "model": config.LLM_MODEL,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "temperature": temperature,
+        "temperature": effective_temp,
         "max_tokens": max_tokens,
     }
     if response_format == "json":
@@ -98,7 +137,7 @@ def chat(
                 "user": user,
                 "inputs_read": inputs_read or [],
                 "model": config.LLM_MODEL,
-                "temperature": temperature,
+                "temperature": effective_temp,
                 "response_format": response_format,
                 "latency_ms": latency_ms,
                 "output": None,
@@ -121,7 +160,7 @@ def chat(
             "user": user,
             "inputs_read": inputs_read or [],
             "model": config.LLM_MODEL,
-            "temperature": temperature,
+            "temperature": effective_temp,
             "response_format": response_format,
             "latency_ms": latency_ms,
             "output": text,
