@@ -248,8 +248,8 @@ def create_project(
     project_id: str,
     *,
     display_name: str,
-    protagonist_name: str,
-    chapter_count_target: int,
+    protagonist_name: str = "",
+    chapter_count_target: int = 50,
     from_preset: Optional[str] = None,
     blank_genre: bool = False,
     outline_synopsis: Optional[str] = None,
@@ -409,7 +409,7 @@ def create_project(
             _write_yaml(project_dir / "characters.yaml", chars_data)
         except Exception as e:  # noqa: BLE001
             _write_yaml(project_dir / "characters.yaml", {
-                "protagonist": {"name": protagonist_name, "description": ""},
+                "protagonist": {"name": protagonist_name or "主角", "description": ""},
                 "supporting": [],
             })
             if warnings_collector is not None:
@@ -421,7 +421,7 @@ def create_project(
                 })
     else:
         _write_yaml(project_dir / "characters.yaml", {
-            "protagonist": {"name": protagonist_name, "description": ""},
+            "protagonist": {"name": protagonist_name or "主角", "description": ""},
             "supporting": [],
         })
 

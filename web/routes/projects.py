@@ -106,7 +106,7 @@ def api_project_new():
     body = request.get_json(silent=True) or {}
 
     # Validate required fields (id 现改为"可选，不给就自动生成")
-    required = ("display_name", "protagonist_name", "chapter_count_target")
+    required = ("display_name",)
     for f in required:
         if body.get(f) is None or body.get(f) == "":
             return jsonify({"ok": False, "reason": f"{f} required"}), 400
@@ -139,8 +139,8 @@ def api_project_new():
         create_project(
             pid,
             display_name=body["display_name"],
-            protagonist_name=body["protagonist_name"],
-            chapter_count_target=int(body["chapter_count_target"]),
+            protagonist_name=(body.get("protagonist_name") or "").strip(),
+            chapter_count_target=int(body.get("chapter_count_target") or 50),
             from_preset=body.get("from_preset"),
             blank_genre=bool(body.get("blank_genre", False)),
             outline_synopsis=body.get("outline_synopsis"),

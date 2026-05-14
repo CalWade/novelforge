@@ -50,16 +50,18 @@
                  placeholder="例：契约末世之殡葬师日记" required />
         </label>
         <label class="form-field">
-          <span class="form-label">主角名 <span class="form-required">*</span></span>
+          <span class="form-label">主角名
+            <span class="form-hint">（可留空，写作时由 AI 起名）</span>
+          </span>
           <input name="protagonist_name" class="form-input" type="text"
-                 placeholder="例：周平" required />
+                 placeholder="例：周平 · 留空则由 AI 在写作时起名" />
         </label>
         <label class="form-field">
-          <span class="form-label">计划章数 <span class="form-required">*</span>
-            <span class="form-hint">（目标总章节数，可大致估算，写大纲时参考）</span>
+          <span class="form-label">计划章数
+            <span class="form-hint">（可留空，默认 50 章；后续可改 project.yaml）</span>
           </span>
           <input name="chapter_count_target" class="form-input" type="number"
-                 min="1" max="999" value="50" required />
+                 min="1" max="999" placeholder="50" />
         </label>
         <div class="form-error" data-wizard-error="2" hidden></div>
         <div class="form-actions">

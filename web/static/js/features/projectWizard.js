@@ -115,11 +115,16 @@ function wizardValidateStep(step) {
   }
   if (step === 2) {
     const display = (fd.get('display_name') || '').toString().trim();
-    const prot = (fd.get('protagonist_name') || '').toString().trim();
-    const chNum = Number(fd.get('chapter_count_target'));
+    const chRaw = (fd.get('chapter_count_target') || '').toString().trim();
     if (!display) { showErr('请输入书名'); return false; }
-    if (!prot) { showErr('请输入主角名'); return false; }
-    if (!chNum || chNum < 1) { showErr('计划章数必须 ≥ 1'); return false; }
+    // 章数留空允许（后端默认 50）；填了就校验 ≥ 1
+    if (chRaw) {
+      const chNum = Number(chRaw);
+      if (!Number.isFinite(chNum) || chNum < 1) {
+        showErr('计划章数必须 ≥ 1（或留空让 AI 默认 50 章）');
+        return false;
+      }
+    }
     return true;
   }
   return true;
@@ -140,14 +145,17 @@ async function wizardSubmit() {
   const fd = new FormData(form);
   const synopsis = (fd.get('outline_synopsis') || '').toString().trim();
   const brief = (fd.get('characters_brief') || '').toString().trim();
+  const protName = (fd.get('protagonist_name') || '').toString().trim();
+  const chRaw = (fd.get('chapter_count_target') || '').toString().trim();
 
   const payload = {
     // id 不传 → 后端 auto_generate_project_id 从 display_name 生成
-    display_name: fd.get('display_name').toString().trim(),
-    protagonist_name: fd.get('protagonist_name').toString().trim(),
-    chapter_count_target: Number(fd.get('chapter_count_target')),
-    from_preset: fd.get('from_preset').toString().trim(),
+    display_name: (fd.get('display_name') || '').toString().trim(),
+    from_preset: (fd.get('from_preset') || '').toString().trim(),
   };
+  // 留空字段不进 payload：后端用默认值（protagonist_name="" / chapter_count_target=50）
+  if (protName) payload.protagonist_name = protName;
+  if (chRaw) payload.chapter_count_target = Number(chRaw);
   // outline / characters：有内容就传；空则默认 blank_*=true
   if (synopsis) {
     payload.outline_synopsis = synopsis;

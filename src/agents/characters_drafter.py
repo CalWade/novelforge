@@ -9,8 +9,9 @@ Single LLM call. Returns dict with schema:
     ]
   }
 
-The protagonist.name is always overridden with what the user typed in step 1
-of the wizard (authoritative source).
+The protagonist.name is overridden with what the user typed in step 1
+of the wizard when provided (authoritative source). If the user left it
+blank, the LLM-suggested name is kept instead (fallback: "主角").
 """
 from __future__ import annotations
 
@@ -48,13 +49,19 @@ supporting:
 class CharactersDrafter:
     def run(self, *, brief: str, protagonist_name: str) -> dict:
         shell = {
-            "protagonist": {"name": protagonist_name, "description": ""},
+            "protagonist": {"name": protagonist_name or "主角", "description": ""},
             "supporting": [],
         }
         if not brief or not brief.strip():
             return shell
 
-        user = f"主角姓名（请在 protagonist.name 沿用此名）：{protagonist_name}\n\n人物简介：\n{brief}\n"
+        if protagonist_name:
+            user = f"主角姓名（请在 protagonist.name 沿用此名）：{protagonist_name}\n\n人物简介：\n{brief}\n"
+        else:
+            user = (
+                "主角姓名未指定，请你在 protagonist.name 起一个符合故事基调的中文姓名。\n\n"
+                f"人物简介：\n{brief}\n"
+            )
         try:
             raw = llm.chat(
                 system=SYSTEM_PROMPT,
@@ -73,8 +80,12 @@ class CharactersDrafter:
         if not isinstance(data, dict):
             return shell
         proto = data.get("protagonist") or {}
-        # user-typed name wins
-        proto["name"] = protagonist_name
+        # user-typed name wins — but only if the user actually typed one.
+        # When protagonist_name is empty, keep the LLM-suggested name.
+        if protagonist_name:
+            proto["name"] = protagonist_name
+        elif not proto.get("name"):
+            proto["name"] = "主角"
         supp = data.get("supporting") or []
         if not isinstance(supp, list):
             supp = []
