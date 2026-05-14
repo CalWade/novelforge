@@ -11,10 +11,9 @@ async function fetchJobs() {
 
 function kindLabel(kind) {
   return {
-    "from-novel": "素材库拆",
+    "from-novel": "多本融合",
     "from-description": "从描述",
     "blank": "空壳",
-    "extract-to-project": "覆盖作品",
   }[kind] || kind;
 }
 

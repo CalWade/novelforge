@@ -58,3 +58,35 @@ export function parseChapterFromInputs(inputs) {
 export function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+
+/**
+ * 渲染 novels/ 下素材库的多选 checkbox 到 DOM。
+ * 共享 helper：NovelDNA 新建 preset 页（/presets/new）和原"覆盖题材"
+ * 对话框都会用。现在 extract_override 已废弃，只剩 presetNew 消费者。
+ *
+ * @param {HTMLElement} root      容器
+ * @param {Array}      novels    /api/novels 返回的列表
+ * @param {string}     fieldName checkbox 的 name 属性
+ */
+export function renderNovelsCheckboxes(root, novels, fieldName) {
+  root.innerHTML = '';
+  if (!novels || novels.length === 0) {
+    root.innerHTML = '<span class="form-hint">素材库为空，去 /novels 上传 txt 文件</span>';
+    return;
+  }
+  novels.forEach((n) => {
+    const name = n.name || n;
+    const label = document.createElement('label');
+    label.className = 'wizard-novel-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.name = fieldName;
+    cb.value = name;
+    const txt = document.createElement('span');
+    txt.textContent = name;
+    label.appendChild(cb);
+    label.appendChild(txt);
+    root.appendChild(label);
+  });
+}

@@ -56,14 +56,27 @@ DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 
 
 def get_active_project_id() -> str | None:
-    """Return the id of the active project, or None if nothing is active."""
+    """Return the id of the active project, or None if nothing is active.
+
+    Self-heals stale pointer: if projects/.active references a project whose
+    directory has been deleted, returns None and clears the pointer.
+    """
     if not ACTIVE_POINTER.exists():
         return None
     try:
         name = ACTIVE_POINTER.read_text(encoding="utf-8").strip()
-        return name or None
     except OSError:
         return None
+    if not name:
+        return None
+    # 自愈：active 指针指向一个已删除的作品目录时，返回 None 并清 pointer
+    if not (PROJECTS_DIR / name).exists():
+        try:
+            ACTIVE_POINTER.write_text("", encoding="utf-8")
+        except OSError:
+            pass
+        return None
+    return name
 
 
 def set_active_project_id(project_id: str) -> None:

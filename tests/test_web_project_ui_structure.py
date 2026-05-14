@@ -1,20 +1,11 @@
-"""Structural assertions for the project-home HTML (wizard 4-step + override-genre button).
+"""新向导（3 步）结构断言 — 2026-05-14 重构后.
 
-Phase 4 · Task 4.7 — verify the index page exposes:
-  - 4 wizard-step sections (data-wizard-step="1..4")
-  - three genre-starter radio options (preset / extract / blank)
-  - the 覆盖题材 override button + its supporting form fields
-  - main.js wires the new endpoints
-
-After P1-17: main.js was split into ES modules; read_web_main_js() from
-conftest.py concatenates them for content-based assertions.
-
-After P2-10: the 6 dialog blocks were split into
-``web/templates/_partials/dialogs/*.html`` partials; assertions that check
-for markers *inside* those dialogs now render the page through the Flask
-test client and inspect the final HTML. The header-only marker
-(``btn-extract-genre-override``) lives in ``index.html`` itself so the
-raw-file read still works for that one.
+新架构：
+  - 向导 3 步（题材 / 作品信息 / 起草）
+  - Step 1 只有 preset 下拉（没有 extract / blank radio）
+  - Step 2 不再问用户要 id（后端 auto_generate_project_id）
+  - 旧的"从原著拆"radio + extract-to-project kind + ⎇ 覆盖按钮已删
+  - post-creation /draft-outline + /draft-characters 链已合并进 /api/projects/new
 """
 from __future__ import annotations
 
@@ -25,90 +16,103 @@ from tests.conftest import read_web_main_js
 REPO = Path(__file__).resolve().parent.parent
 
 
-def _rendered_index_html() -> str:
-    """Render index.html through Flask so included partials are expanded."""
-    from web.app import app
-    client = app.test_client()
-    resp = client.get("/")
-    assert resp.status_code == 200, f"GET / returned {resp.status_code}"
-    return resp.get_data(as_text=True)
+def _index_html() -> str:
+    return (REPO / "web/templates/index.html").read_text(encoding="utf-8")
 
 
-def test_index_html_has_wizard_4_steps():
-    html = _rendered_index_html()
-    for step in (1, 2, 3, 4):
-        assert f'data-wizard-step="{step}"' in html, f"wizard step {step} marker missing"
+def _wizard_html() -> str:
+    return (REPO / "web/templates/_partials/dialogs/new_project.html").read_text(encoding="utf-8")
 
 
-def test_index_html_has_three_genre_starter_options():
-    html = _rendered_index_html()
-    for marker in ('data-genre-starter="preset"',
-                   'data-genre-starter="extract"',
-                   'data-genre-starter="blank"'):
-        assert marker in html, f"genre-starter option {marker} missing"
+# ---------- 新架构：向导 3 步 ----------
+
+def test_wizard_has_exactly_three_steps():
+    html = _wizard_html()
+    for step in ("1", "2", "3"):
+        assert f'data-wizard-step="{step}"' in html, f"step {step} 缺失"
+    assert 'data-wizard-step="4"' not in html, "第 4 步应该在重构中被删掉"
 
 
-def test_index_html_has_extract_genre_override_button():
-    # This one lives in index.html's header, not in a partial.
-    text = (REPO / "web" / "templates" / "index.html").read_text(encoding="utf-8")
-    assert 'id="btn-extract-genre-override"' in text
+def test_wizard_step1_only_has_preset_picker():
+    """Step 1 只剩 from_preset select，不再有 genre_starter radio."""
+    html = _wizard_html()
+    assert 'id="select-from-preset"' in html
+    # 旧的 3 选 radio 应全部消失
+    assert 'genre_starter' not in html
+    assert 'data-genre-panel="extract"' not in html
+    assert 'data-genre-panel="blank"' not in html
 
 
-def test_index_html_wizard_has_outline_and_characters_textareas():
-    html = _rendered_index_html()
+def test_wizard_step2_no_user_facing_id_field():
+    """id 不再展示给用户，后端 auto-generate."""
+    html = _wizard_html()
+    # name="id" 的 input 应该不存在
+    assert 'name="id"' not in html
+
+
+def test_wizard_step3_has_outline_and_characters_textareas():
+    html = _wizard_html()
     assert 'name="outline_synopsis"' in html
     assert 'name="characters_brief"' in html
-    assert 'name="blank_outline"' in html
-    assert 'name="blank_characters"' in html
 
 
-def test_main_js_wires_wizard_and_override():
-    text = read_web_main_js()
-    # Wizard submission
-    assert "/api/projects/new" in text
-    # Override
-    assert "/extract-genre" in text
-    # Reads presets and novels list
-    assert "/api/presets" in text
-    assert "/api/novels" in text
+def test_wizard_step1_links_to_preset_new_when_empty():
+    """Step 1 有 '去题材库新建一个 preset' 的按钮."""
+    html = _wizard_html()
+    assert 'href="/presets/new"' in html
+    assert 'wizard-preset-empty-hint' in html
 
 
-def test_no_stale_genres_urls_in_web():
-    """Web layer must fully use /presets routes after Phase 4."""
-    import subprocess
-    result = subprocess.run(
-        ["git", "grep", "-l", "-E", r"/api/genres|href=\"/genres\""],
-        capture_output=True, text=True, cwd=REPO,
+# ---------- 新架构：顶栏不再有 ⎇ 覆盖题材按钮 ----------
+
+def test_no_extract_genre_override_button():
+    html = _index_html()
+    assert 'btn-extract-genre-override' not in html
+
+
+def test_no_extract_override_dialog_include():
+    html = _index_html()
+    assert 'extract_override.html' not in html
+
+
+# ---------- 新架构：main.js 清理了 initExtractOverride 引用 ----------
+
+def test_main_js_does_not_import_extract_override():
+    js = read_web_main_js()
+    # extractOverride.js 本身已删，所以 import 会 404；
+    # 确保 main.js 里没有这个 import 语句残留
+    assert 'extractOverride.js' not in js
+    assert 'initExtractOverride' not in js
+
+
+# ---------- 新架构：wizard 不再发 extract-to-project job ----------
+
+def test_wizard_does_not_send_extract_to_project_kind():
+    js = read_web_main_js()
+    assert 'extract-to-project' not in js, (
+        "新建作品向导不应再提交 kind='extract-to-project' — "
+        "这个 kind 已被后端白名单移除。"
     )
-    hits = [ln for ln in result.stdout.splitlines() if ln and ln.startswith("web/")]
-    assert hits == [], f"stale /genres URLs in web/: {hits}"
 
 
-def test_preset_detail_template_uses_preset_id_not_gid():
-    """Phase 5 cleanup: the detail template's view passes `preset_id`, not `gid`."""
-    text = (REPO / "web" / "templates" / "presets" / "detail.html").read_text(encoding="utf-8")
-    assert "{{ gid }}" not in text, "detail.html still references {{ gid }} (view passes preset_id)"
-    assert "{{ preset_id }}" in text, "detail.html should render {{ preset_id }} at least once"
+def test_wizard_does_not_separately_call_post_creation_drafts():
+    """合并后的流程：synopsis/brief 直接进 /api/projects/new payload，
+    不再有 post-creation 的 /draft-outline + /draft-characters 串联调用."""
+    js = read_web_main_js()
+    # 向导内部不再显式调这两个 endpoint；它们仅作为 backend warnings 的重试
+    # endpoint 在 warnings.retry_endpoint 里引用，但 wizard JS 不主动 fetch
+    assert 'runPostCreationDrafts' not in js
 
 
-def test_preset_templates_have_no_dead_routes():
-    """Phase 5 cleanup: no links to removed routes (/presets/<id>/extract).
+def test_wizard_sends_outline_synopsis_to_create_endpoint():
+    """新流程：synopsis 直接在 POST /api/projects/new payload 里传."""
+    js = read_web_main_js()
+    assert 'outline_synopsis' in js
+    assert 'characters_brief' in js
 
-    Scope is web/ only (docs/plans may still mention historical routes).
-    Excludes /api/presets/new-from-novel / new-blank / new-from-description
-    which are valid current endpoints. /presets/new is also a valid current
-    page (the 3-tab creation wizard added in Task 4).
-    """
-    import subprocess
-    # Look only inside web/ and match ONLY the dead routes as HREFs or URL literals.
-    # Patterns:
-    #   href="/presets/<anything>/extract..."  — old extract flow
-    #   /api/presets/new"  or  /api/presets/new'  (exact /new, not /new-from-novel etc.)
-    result = subprocess.run(
-        ["git", "grep", "-nE",
-         r"href=\"/presets/[^\"]+/extract|/api/presets/new[\"']",
-         "--", "web/"],
-        capture_output=True, text=True, cwd=REPO,
-    )
-    hits = [ln for ln in result.stdout.splitlines() if ln]
-    assert hits == [], f"references to deleted routes in web/: {hits}"
+
+# ---------- 新架构：后端 auto_generate_project_id 存在 ----------
+
+def test_backend_has_auto_generate_project_id():
+    bootstrap_py = (REPO / "src/bootstrap.py").read_text(encoding="utf-8")
+    assert 'def auto_generate_project_id' in bootstrap_py

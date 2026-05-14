@@ -1,5 +1,5 @@
 // /presets/new 三 tab 表单 → 提交 /api/jobs → 跳 /jobs/<id>
-import { renderNovelsCheckboxes } from "./projectWizard.js";
+import { renderNovelsCheckboxes } from "../utils.js";
 
 async function submitJob(kind, target, params, sources = []) {
   const r = await fetch("/api/jobs", {

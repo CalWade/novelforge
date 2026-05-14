@@ -97,38 +97,43 @@ def api_project_new():
     Characters source (exactly one):
       characters_brief=<str> (LLM drafts)  |  blank_characters=True
 
-    The asynchronous ``from_extract`` branch has been removed. To populate
-    a project's genre files by extracting from source novels, create the
-    skeleton here (typically with ``blank_genre=True``) and then submit an
-    ``extract-to-project`` job via ``POST /api/jobs``.
+    The asynchronous ``from_extract`` branch has been removed. 现在流程是：
+    先在题材库用 NovelDNA 从多本素材融合产出一个 preset（POST /api/jobs
+    kind='from-novel'），然后 from_preset=<id> 新建作品。
     """
     if READONLY_MODE:
         return jsonify({"ok": False, "reason": "readonly_mode"}), 403
     body = request.get_json(silent=True) or {}
 
-    # Validate required scalar fields up-front — create_project's own checks
-    # would raise ValueError too, but doing it here gives crisper messages
-    # and avoids creating an aborted on-disk skeleton for trivial mistakes.
-    required = ("id", "display_name", "protagonist_name", "chapter_count_target")
+    # Validate required fields (id 现改为"可选，不给就自动生成")
+    required = ("display_name", "protagonist_name", "chapter_count_target")
     for f in required:
         if body.get(f) is None or body.get(f) == "":
             return jsonify({"ok": False, "reason": f"{f} required"}), 400
 
-    pid = body["id"]
+    # id 自动生成（用户未指定 id 时，从 display_name 推 + uuid 后缀保唯一）
+    from src.bootstrap import auto_generate_project_id
+    pid = body.get("id")
+    if not pid:
+        pid = auto_generate_project_id(
+            body["display_name"], body.get("protagonist_name", ""),
+        )
 
-    # Reject the legacy ``from_extract`` async payload with a clear pointer
-    # to the new flow (NovelDNA 先造 preset → create_project(from_preset=)).
+    # Reject legacy ``from_extract`` async payload with a clear pointer
+    # to the new flow (NovelDNA 先造 preset → from_preset=<id> 建书).
     if body.get("from_extract") and body["from_extract"].get("sources"):
         return jsonify({
             "ok": False,
             "reason": (
-                "from_extract 已不再接受。请先用 POST /api/jobs "
-                "kind='from-novel' 从多本素材小说生成一个 preset，"
-                "再通过 from_preset 新建作品。"
+                "from_extract 已不再接受。请先在题材库用 NovelDNA 从多本素材"
+                "生成一个 preset（POST /api/jobs kind='from-novel'），"
+                "然后用 from_preset 新建作品。"
             ),
         }), 400
 
-    # Sync path: create skeleton + bootstrap into state/.
+    # Sync path: create skeleton + bootstrap into state/. drafter failures
+    # are collected in warnings 而不是抛异常——作品仍成功创建。
+    warnings: list = []
     try:
         from src.bootstrap import bootstrap_project, create_project
         create_project(
@@ -143,6 +148,7 @@ def api_project_new():
             characters_brief=body.get("characters_brief"),
             blank_characters=bool(body.get("blank_characters", False)),
             overwrite=bool(body.get("overwrite", False)),
+            warnings_collector=warnings,
         )
         bootstrap_project(pid)
     except ValueError as e:
@@ -151,7 +157,11 @@ def api_project_new():
         return jsonify({"ok": False, "reason": str(e)}), 404
     except FileExistsError as e:
         return jsonify({"ok": False, "reason": str(e)}), 409
-    return jsonify({"ok": True, "project_id": pid})
+    return jsonify({
+        "ok": True,
+        "project_id": pid,
+        "warnings": warnings,  # 每项形如 {field, reason, retry_endpoint, synopsis/brief}
+    })
 
 
 @bp.post("/api/projects/<pid>/draft-outline")

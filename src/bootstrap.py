@@ -72,6 +72,38 @@ def _validate_id(kind: str, value: str) -> None:
         )
 
 
+def auto_generate_project_id(display_name: str, protagonist_name: str = "") -> str:
+    """从书名（display_name）自动生成一个符合 _VALID_ID_RE 的作品 id。
+
+    策略：
+      1. 取 display_name 中所有 ASCII 字母数字连字符字符串 → 小写 + hyphen
+      2. 若结果为空（全中文 / 特殊字符），用 protagonist_name 的 ASCII 字符兜底
+      3. 仍为空 → 用 "book" 前缀 + 8 位 uuid
+      4. 附加 8 位 uuid 后缀保证唯一（即使用户重名也不冲突）
+
+    返回的 id 保证：
+      - 符合 `_VALID_ID_RE`
+      - 与当前 PROJECTS_DIR 下已存在的 id 不重复（用 uuid 后缀保证）
+    """
+    import uuid
+    # Strip / lowercase ASCII-ish chars
+    stem = re.sub(r"[^a-zA-Z0-9\s-]", "", display_name or "").strip().lower()
+    stem = re.sub(r"\s+", "-", stem)  # 空格 → hyphen
+    stem = re.sub(r"-+", "-", stem).strip("-")  # 合并多个 hyphen，去首尾
+    if not stem:
+        stem = re.sub(r"[^a-zA-Z0-9]", "", protagonist_name or "").lower()
+    if not stem or not re.match(r"^[a-z0-9_]", stem):
+        stem = "book"
+    # 截短 + uuid 后缀保唯一
+    stem = stem[:50]
+    suffix = uuid.uuid4().hex[:8]
+    candidate = f"{stem}-{suffix}"
+    # 极端情况（stem 首字符非法）用 book- 前缀
+    if not _VALID_ID_RE.match(candidate):
+        candidate = f"book-{suffix}"
+    return candidate
+
+
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
@@ -225,6 +257,7 @@ def create_project(
     characters_brief: Optional[str] = None,
     blank_characters: bool = False,
     overwrite: bool = False,
+    warnings_collector: Optional[list] = None,
 ) -> Path:
     """Scaffold a new project (book-centric single-layer).
 
@@ -337,28 +370,55 @@ def create_project(
         )
 
     # outline.json — drafter or blank
+    # drafter 失败（网络/LLM 格式）不阻断作品创建：落 blank 兜底 +
+    # warnings_collector 里加一条，前端据此提示"去详情页重跑 drafter"。
     if outline_synopsis:
-        from src.agents.outline_drafter import OutlineDrafter
-        outline_data = OutlineDrafter().run(
-            synopsis=outline_synopsis,
-            chapter_count_target=chapter_count_target,
-            display_name=display_name,
-        )
-        _write_json(project_dir / "outline.json", outline_data)
+        try:
+            from src.agents.outline_drafter import OutlineDrafter
+            outline_data = OutlineDrafter().run(
+                synopsis=outline_synopsis,
+                chapter_count_target=chapter_count_target,
+                display_name=display_name,
+            )
+            _write_json(project_dir / "outline.json", outline_data)
+        except Exception as e:  # noqa: BLE001
+            _write_json(project_dir / "outline.json", {
+                "title": display_name, "chapters": [],
+            })
+            if warnings_collector is not None:
+                warnings_collector.append({
+                    "field": "outline",
+                    "reason": f"OutlineDrafter failed: {type(e).__name__}: {e}",
+                    "retry_endpoint": f"/api/projects/{project_id}/draft-outline",
+                    "synopsis": outline_synopsis,
+                })
     else:
         _write_json(project_dir / "outline.json", {
             "title": display_name,
             "chapters": [],
         })
 
-    # characters.yaml — drafter or blank
+    # characters.yaml — drafter or blank（同样 drafter 失败不阻断）
     if characters_brief:
-        from src.agents.characters_drafter import CharactersDrafter
-        chars_data = CharactersDrafter().run(
-            brief=characters_brief,
-            protagonist_name=protagonist_name,
-        )
-        _write_yaml(project_dir / "characters.yaml", chars_data)
+        try:
+            from src.agents.characters_drafter import CharactersDrafter
+            chars_data = CharactersDrafter().run(
+                brief=characters_brief,
+                protagonist_name=protagonist_name,
+            )
+            _write_yaml(project_dir / "characters.yaml", chars_data)
+        except Exception as e:  # noqa: BLE001
+            _write_yaml(project_dir / "characters.yaml", {
+                "protagonist": {"name": protagonist_name, "description": ""},
+                "supporting": [],
+            })
+            if warnings_collector is not None:
+                warnings_collector.append({
+                    "field": "characters",
+                    "reason": f"CharactersDrafter failed: {type(e).__name__}: {e}",
+                    "retry_endpoint": f"/api/projects/{project_id}/draft-characters",
+                    "brief": characters_brief,
+                })
     else:
         _write_yaml(project_dir / "characters.yaml", {
             "protagonist": {"name": protagonist_name, "description": ""},

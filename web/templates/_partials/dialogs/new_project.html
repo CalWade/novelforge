@@ -1,9 +1,8 @@
 <!-- =========================================================
-     NEW PROJECT WIZARD (4-step, Phase 4 Task 4.7)
-       1) 基本信息
-       2) 题材起点 (preset / extract / blank)
-       3) 大纲起点 (synopsis / blank)
-       4) 角色起点 (brief / blank)
+     NEW PROJECT WIZARD (3-step, 2026-05-14 重构)
+       1) 题材起点 (preset 必选，没合适的→题材库新建)
+       2) 作品信息 (书名/主角名/章节数；id 后端自动生成)
+       3) 大纲&人物起草 (synopsis + brief 一次性 LLM 起草，失败不阻塞)
      ========================================================= -->
 <dialog id="dlg-new-project" class="dlg dlg-wide">
   <div class="dlg-header">
@@ -13,76 +12,55 @@
   <div class="dlg-body">
     <form id="project-wizard-form" class="onb-form">
 
-      <!-- Step 1 · basics -->
+      <!-- Step 1 · 题材起点 (必选) -->
       <section data-wizard-step="1" class="wizard-pane is-active">
-        <div class="wizard-step-head">1/4 · 基本信息</div>
+        <div class="wizard-step-head">1/3 · 题材起点</div>
+        <p class="form-hint">
+          选一个已有 preset 作为本作品的题材底色（era / 写作风格 / 铁律 / DNA 样本库都来自它）。
+        </p>
         <label class="form-field">
-          <span class="form-label">作品 ID <span class="form-required">*</span>
-            <span class="form-hint">小写字母 / 数字 / 连字符 / 下划线，长度 ≤ 64</span>
-          </span>
-          <input name="id" class="form-input form-input-mono" type="text"
-                 pattern="^[a-z0-9_][a-z0-9_-]{0,63}$" placeholder="my-new-book" required />
+          <span class="form-label">选择 preset <span class="form-required">*</span></span>
+          <select name="from_preset" id="select-from-preset" class="form-input" required>
+            <option value="" disabled selected>加载中…</option>
+          </select>
         </label>
-        <label class="form-field">
-          <span class="form-label">显示名 <span class="form-required">*</span></span>
-          <input name="display_name" class="form-input" type="text" required />
-        </label>
-        <label class="form-field">
-          <span class="form-label">主角姓名 <span class="form-required">*</span></span>
-          <input name="protagonist_name" class="form-input" type="text" required />
-        </label>
-        <label class="form-field">
-          <span class="form-label">目标章数 <span class="form-required">*</span></span>
-          <input name="chapter_count_target" class="form-input" type="number" min="1" value="50" required />
-        </label>
+        <div class="wizard-preset-empty-hint" id="wizard-preset-empty-hint" hidden>
+          <p class="form-hint">
+            没有合适的 preset？
+            <a href="/presets/new" target="_blank" class="btn btn-ghost btn-inline">
+              → 去题材库新建一个
+            </a>
+            （支持从多本素材小说融合产出，或手写空壳、AI 生成）
+          </p>
+        </div>
         <div class="form-error" data-wizard-error="1" hidden></div>
         <div class="form-actions">
           <button type="button" class="btn btn-primary" data-wizard-next="2">下一步 →</button>
         </div>
       </section>
 
-      <!-- Step 2 · genre starter (three options) -->
+      <!-- Step 2 · 作品基本信息 (id 后端自动生成，前端不展示) -->
       <section data-wizard-step="2" class="wizard-pane" hidden>
-        <div class="wizard-step-head">2/4 · 题材起点</div>
-        <div class="form-field">
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="preset" data-genre-starter="preset" checked>
-            <span>从 preset 拷贝 <span class="form-hint">（最快；直接复用已有题材包）</span></span>
-          </label>
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="extract" data-genre-starter="extract">
-            <span>从原著拆 <span class="form-hint">（调 LLM，慢；从小说素材拆题材）</span></span>
-          </label>
-          <label class="wizard-radio">
-            <input type="radio" name="genre_starter" value="blank" data-genre-starter="blank">
-            <span>最小脚手架（空壳） <span class="form-hint">（产出 TODO 占位，手填）</span></span>
-          </label>
-        </div>
-
-        <div data-genre-panel="preset">
-          <label class="form-field">
-            <span class="form-label">选择 preset：</span>
-            <select name="from_preset" id="select-from-preset" class="form-input">
-              <option value="" disabled selected>加载中…</option>
-            </select>
-          </label>
-        </div>
-        <div data-genre-panel="extract" hidden>
-          <div class="form-field">
-            <span class="form-label">从 novels/ 大池子勾选素材：</span>
-            <div id="novels-pool-checkboxes" class="wizard-checkbox-pool">
-              <span class="form-hint">加载中…</span>
-            </div>
-          </div>
-          <label class="wizard-radio">
-            <input type="checkbox" name="extract_with_trial">
-            <span>跑 3 章试验书 <span class="form-hint">（慢；验证题材包可用性）</span></span>
-          </label>
-        </div>
-        <div data-genre-panel="blank" hidden>
-          <p class="form-hint">将产出 4 份 TODO 空壳，等你手填后 bootstrap。</p>
-        </div>
-
+        <div class="wizard-step-head">2/3 · 作品信息</div>
+        <label class="form-field">
+          <span class="form-label">书名 <span class="form-required">*</span>
+            <span class="form-hint">（显示给读者的名字，支持中文）</span>
+          </span>
+          <input name="display_name" class="form-input" type="text"
+                 placeholder="例：契约末世之殡葬师日记" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">主角名 <span class="form-required">*</span></span>
+          <input name="protagonist_name" class="form-input" type="text"
+                 placeholder="例：周平" required />
+        </label>
+        <label class="form-field">
+          <span class="form-label">计划章数 <span class="form-required">*</span>
+            <span class="form-hint">（目标总章节数，可大致估算，写大纲时参考）</span>
+          </span>
+          <input name="chapter_count_target" class="form-input" type="number"
+                 min="1" max="999" value="50" required />
+        </label>
         <div class="form-error" data-wizard-error="2" hidden></div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" data-wizard-prev="1">← 上一步</button>
@@ -90,46 +68,37 @@
         </div>
       </section>
 
-      <!-- Step 3 · outline starter -->
+      <!-- Step 3 · 起草大纲 & 人物 (可选，失败不阻塞) -->
       <section data-wizard-step="3" class="wizard-pane" hidden>
-        <div class="wizard-step-head">3/4 · 大纲起点</div>
-        <label class="form-field">
-          <span class="form-label">粘贴故事梗概 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
-          <textarea name="outline_synopsis" class="form-input" rows="6"
-                    placeholder="主角的动机、冲突、转折…"></textarea>
-        </label>
-        <label class="wizard-radio">
-          <input type="checkbox" name="blank_outline">
-          <span>跳过，产出空壳 outline</span>
-        </label>
-        <div class="form-error" data-wizard-error="3" hidden></div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-wizard-prev="2">← 上一步</button>
-          <button type="button" class="btn btn-primary" data-wizard-next="4">下一步 →</button>
-        </div>
-      </section>
+        <div class="wizard-step-head">3/3 · 大纲 &amp; 人物起草</div>
+        <p class="form-hint">
+          下面两项都<strong>可选</strong>。留空会产出空壳让你之后手填；填了则
+          LLM 一次性起草初稿。若起草失败，作品仍会创建成功，可在作品详情里重跑。
+        </p>
 
-      <!-- Step 4 · characters starter -->
-      <section data-wizard-step="4" class="wizard-pane" hidden>
-        <div class="wizard-step-head">4/4 · 角色起点</div>
         <label class="form-field">
-          <span class="form-label">粘贴人物简介 <span class="form-hint">（可留空；留空等同勾选下方）</span></span>
-          <textarea name="characters_brief" class="form-input" rows="6"
-                    placeholder="主角身份、配角列表、关系网…"></textarea>
+          <span class="form-label">故事梗概 <span class="form-hint">（用于起草 outline.json）</span></span>
+          <textarea name="outline_synopsis" class="form-input" rows="5"
+                    placeholder="主角的动机、核心冲突、大致转折…300-500 字足矣"></textarea>
         </label>
-        <label class="wizard-radio">
-          <input type="checkbox" name="blank_characters">
-          <span>跳过，产出只含主角的空壳</span>
+
+        <label class="form-field">
+          <span class="form-label">人物简述 <span class="form-hint">（用于起草 characters.yaml）</span></span>
+          <textarea name="characters_brief" class="form-input" rows="5"
+                    placeholder="主角身份 / 主要配角 / 敌对阵营 / 关系网…"></textarea>
         </label>
-        <div class="form-error" data-wizard-error="4" hidden></div>
+
+        <div class="form-error" data-wizard-error="3" hidden></div>
+
         <div class="wizard-status" id="np-create-status" hidden>
           <div class="wizard-status-row">
             <div class="wizard-status-mark">◐</div>
-            <div class="wizard-status-text">提交中…</div>
+            <div class="wizard-status-text">创建中…</div>
           </div>
         </div>
+
         <div class="form-actions">
-          <button type="button" class="btn btn-ghost" data-wizard-prev="3">← 上一步</button>
+          <button type="button" class="btn btn-ghost" data-wizard-prev="2">← 上一步</button>
           <button type="submit" class="btn btn-primary" id="btn-wizard-submit">创建作品</button>
         </div>
       </section>

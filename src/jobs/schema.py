@@ -8,7 +8,7 @@ from typing import Literal, TypedDict
 SCHEMA_VERSION = 1
 
 JobState = Literal["running", "aborting", "done", "failed", "aborted", "interrupted"]
-JobKind = Literal["from-novel", "from-description", "blank", "extract-to-project"]
+JobKind = Literal["from-novel", "from-description", "blank"]
 TargetType = Literal["preset", "project"]
 
 TERMINAL_STATES = frozenset({"done", "failed", "aborted", "interrupted"})

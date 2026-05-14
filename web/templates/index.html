@@ -148,11 +148,6 @@
         </button>
       </div>
 
-      <!-- Override genre: 作品视图专属的"从原著覆盖当前题材"快捷 -->
-      <button id="btn-extract-genre-override" class="btn btn-ghost btn-icon view-novel-only" title="从原著覆盖当前题材配置">
-        <span class="btn-glyph">⎇</span>
-      </button>
-
       <!-- 题材视图专属入口：题材库 / 素材库 / 新建题材。
            与 run-panel 同层，顶栏 ops 行两视图的"操作区"职责对齐。 -->
       <a class="btn btn-ghost view-genre-only" href="/presets" title="题材库：浏览 / 删除现有 preset" style="display:none">
@@ -328,8 +323,6 @@
 {% include "_partials/dialogs/project_picker.html" %}
 
 {% include "_partials/dialogs/new_project.html" %}
-
-{% include "_partials/dialogs/extract_override.html" %}
 
 {% include "_partials/dialogs/sources_editor.html" %}
 

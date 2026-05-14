@@ -52,7 +52,6 @@ def test_expected_core_modules_exist():
         "ui/runControls.js",
         "features/projectPicker.js",
         "features/projectWizard.js",
-        "features/extractOverride.js",
         "features/sourceEditor.js",
         "features/settings.js",
         "features/onboarding.js",
@@ -124,11 +123,8 @@ def test_key_functions_still_defined_somewhere():
         "function openProjectPicker", "function openNewProjectWizard",
         "function openSettingsDialog", "function openSourceEditor",
         "function checkOnboarding", "function showOnboarding",
-        "function initExtractOverride",
         # bookkeeping (P1-9)
         "function renderBookkeeping",
-        # extract progress
-        "function pollExtractProgress",
     ]
     missing = [name for name in must_have if name not in src]
     assert not missing, (

@@ -16,7 +16,6 @@ import { openFile } from './ui/viewer.js';
 import { syncRunFields, doRun, doAbort } from './ui/runControls.js';
 import { openProjectPicker } from './features/projectPicker.js';
 import { openSettingsDialog } from './features/settings.js';
-import { initExtractOverride } from './features/extractOverride.js';
 import { checkOnboarding, showOnboarding } from './features/onboarding.js';
 import { initViewSwitcher } from './features/viewSwitcher.js';
 
@@ -30,9 +29,6 @@ function wireButtons() {
   // Project switcher + settings
   $('#btn-project').addEventListener('click', openProjectPicker);
   $('#btn-settings').addEventListener('click', openSettingsDialog);
-
-  // Override-genre button + dialog (Phase 4 Task 4.7)
-  initExtractOverride();
 
   // Generic dialog close (data-close-dialog)
   document.addEventListener('click', (e) => {
