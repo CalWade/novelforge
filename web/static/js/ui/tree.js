@@ -137,8 +137,8 @@ export function renderTree() {
   const rulesWrap = el('div', { class: 'tree-section-items', 'data-collapsible-items': '' });
   [
     ['rules/00-information-priority.md', '00-information-priority.md'],
-    ['rules/24-iron-laws.md',            '24-iron-laws.md'],
-    ['rules/18-landmines.md',            '18-landmines.md'],
+    ['rules/iron-laws.md',               'iron-laws.md'],
+    ['rules/landmines.md',               'landmines.md'],
     ['rules/writing-style-core.md',      'writing-style-core.md'],
   ].forEach(([p, name]) => rulesWrap.appendChild(treeItem(p, name, ICONS.section)));
   rulesWrap.style.display = 'none';

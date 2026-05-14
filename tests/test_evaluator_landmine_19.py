@@ -1,13 +1,10 @@
 """Lock in landmine_19 (因果颠倒归因／记错功劳) is wired end-to-end in Evaluator's
-system prompt + rules/18-landmines.md is up to date.
+system prompt + rules/landmines.md is up to date.
 
 Why: landmine_19 guards against a specific kind of narrative bug found in ch002 of
 user project book-e3f4fc9b (老刘 送情报救了陈默，但陈默反过来说"我救了你一命"——
-方向性归因错误)。If evaluator.py 或 rules/18-landmines.md 被人改回 "18"，
+方向性归因错误)。If evaluator.py 或 rules/landmines.md 被人改回 "18"，
 the LLM 会按 18 条的 schema 输出 JSON、跳过第 19 条，这条 landmine 就失效了。
-
-Note: filename rules/18-landmines.md intentionally NOT renamed (would break all
-import/read paths for backward compat)。只有内容升级到 19 条。
 """
 from __future__ import annotations
 
@@ -19,7 +16,7 @@ from src.agents.evaluator import Evaluator
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LANDMINES_PATH = REPO_ROOT / "rules" / "18-landmines.md"
+LANDMINES_PATH = REPO_ROOT / "rules" / "landmines.md"
 
 
 def _seed_minimum(tmp_path: Path) -> Blackboard:
@@ -47,7 +44,7 @@ def _seed_minimum(tmp_path: Path) -> Blackboard:
     return b
 
 
-# ---------------- Case 1: rules/18-landmines.md declares 19 items ----------------
+# ---------------- Case 1: rules/landmines.md declares 19 items ----------------
 
 
 def test_landmines_file_declares_19_items():
@@ -61,7 +58,7 @@ def test_landmines_file_declares_19_items():
 
     # Header must advertise 19
     assert "19 个" in text or "19 Landmines" in text, (
-        "rules/18-landmines.md header still claims 18 landmines — update the "
+        "rules/landmines.md header still claims 18 landmines — update the "
         "'# N 个写作雷点 (The N Landmines)' line to 19."
     )
 
@@ -131,6 +128,6 @@ def test_evaluator_prompt_embeds_landmine_19(tmp_path):
     # Title keyword from the rules file must survive the rule-text concat.
     assert ("因果颠倒归因" in system) or ("记错功劳" in system), (
         "landmine_19's title keyword is missing from the assembled system "
-        "prompt — confirm _read_rule('18-landmines.md') returns the updated "
+        "prompt — confirm _read_rule('landmines.md') returns the updated "
         "file contents."
     )

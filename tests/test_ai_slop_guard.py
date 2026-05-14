@@ -4,7 +4,7 @@ Auditor fan-out 伙伴之一；过去只在 test_fact_checker.py 间接验证其
 现在加直接单测覆盖 prompt 构造与输出解析。
 
 注意：AISlopGuard 把 AI 味判据作为**内联常量** AI_SLOP_CRITERIA 放在代码里，
-并不读取 rules/18-landmines.md 文件。因此测试只断言 inputs_read 只含章节文件，
+并不读取 rules/landmines.md 文件。因此测试只断言 inputs_read 只含章节文件，
 并断言 system prompt 包含 AI 味判据的关键词。
 """
 from __future__ import annotations

@@ -72,7 +72,7 @@ def test_docs_rules_has_info_priority_copy():
 
 @pytest.mark.parametrize(
     "rule_name",
-    ["24-iron-laws.md", "18-landmines.md", "writing-style-core.md", "00-information-priority.md"],
+    ["iron-laws.md", "landmines.md", "writing-style-core.md", "00-information-priority.md"],
 )
 def test_docs_rules_in_sync_with_source(rule_name):
     """Every rule file shipped to Pages must match the source in rules/."""

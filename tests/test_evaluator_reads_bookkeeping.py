@@ -158,8 +158,8 @@ def test_evaluator_inputs_read_stays_minimal_without_bookkeeping(tmp_path):
         "state/characters.yaml",
         "state/timeline.yaml",
         "state/iron-laws-extra.md",
-        "rules/18-landmines.md",
-        "rules/24-iron-laws.md",
+        "rules/landmines.md",
+        "rules/iron-laws.md",
         "rules/00-information-priority.md",
     }
     assert set(inputs) == expected_baseline

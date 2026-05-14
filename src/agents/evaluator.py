@@ -18,8 +18,8 @@ Reads (everything under state/ is setting-injected via bootstrap):
   - state/iron-laws-extra.md  — setting-specific iron laws
   - state/current_status_card.md  — Lesson-3 authoritative "who knows what" snapshot (optional)
   - state/pending_hooks.md        — Lesson-3 active-hooks pool (optional)
-  - rules/18-landmines.md     — universal landmines
-  - rules/24-iron-laws.md     — universal iron laws
+  - rules/landmines.md        — universal landmines
+  - rules/iron-laws.md        — universal iron laws
 
 Writes:
   - state/chapters/ch{N:03d}.verdict.json
@@ -54,8 +54,8 @@ class Evaluator(BaseAgent):
         # and landmine_13 (世界观矛盾). Absent/empty files are tolerated (chapter 1).
         status_card = bb.read_text("current_status_card.md") if bb.exists("current_status_card.md") else ""
         pending_hooks = bb.read_text("pending_hooks.md") if bb.exists("pending_hooks.md") else ""
-        landmines = self._read_rule("18-landmines.md")
-        iron_laws = self._read_rule("24-iron-laws.md")
+        landmines = self._read_rule("landmines.md")
+        iron_laws = self._read_rule("iron-laws.md")
         info_priority = self._read_rule("00-information-priority.md")
 
         try:
@@ -70,8 +70,8 @@ class Evaluator(BaseAgent):
             "state/characters.yaml",
             "state/timeline.yaml",
             "state/iron-laws-extra.md",
-            "rules/18-landmines.md",
-            "rules/24-iron-laws.md",
+            "rules/landmines.md",
+            "rules/iron-laws.md",
             "rules/00-information-priority.md",
         ]
         # Only log the Lesson-3 bookkeeping files when they actually carry content.

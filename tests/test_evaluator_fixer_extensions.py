@@ -96,6 +96,6 @@ def test_evaluator_loads_information_priority_rule(seeded_bb):
 
 def test_evaluator_still_loads_landmines_and_iron_laws(seeded_bb):
     _, _, inputs = Evaluator()._build_prompts(seeded_bb, chapter=1)
-    assert "rules/18-landmines.md" in inputs
-    assert "rules/24-iron-laws.md" in inputs
+    assert "rules/landmines.md" in inputs
+    assert "rules/iron-laws.md" in inputs
     assert "state/iron-laws-extra.md" in inputs

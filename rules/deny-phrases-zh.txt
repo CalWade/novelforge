@@ -3,7 +3,7 @@
 #   - Drafter system prompt 内联这份清单，提醒模型避免
 #   - Validator Tier-1 以正则扫描 era.md / writing-style-extra.md / iron-laws-extra.md
 # 格式：一行一个短语，# 开头为注释，空行忽略
-# 来源：opencode 现有 rules/18-landmines.md "AI 味" 家族 + yzhao062/agent-style RULES 中文投影
+# 来源：opencode 现有 rules/landmines.md "AI 味" 家族 + yzhao062/agent-style RULES 中文投影
 # 维护：新增时保持去重；不要放正则元字符，纯字面匹配由 Validator 做 re.escape
 
 # ---- Filler / 意义为零的套话 ----

@@ -224,8 +224,8 @@ novelforge/
 │
 ├── rules/                           # 通用规则（题材无关）
 │   ├── 00-information-priority.md   # 信息源优先级（冲突仲裁协议 R1..R5）
-│   ├── 24-iron-laws.md              # 28 条通用铁律
-│   ├── 18-landmines.md              # 18 个通用雷点（含高疲劳词黑名单）
+│   ├── iron-laws.md                 # 28 条通用铁律
+│   ├── landmines.md                 # 通用雷点清单（含高疲劳词黑名单）
 │   ├── writing-style-core.md        # 通用写作风格（六步分析 + 代入感六支柱 + Show-Don't-Tell）
 │   └── deny-phrases-{zh,en}.txt     # Tier-1 deny-phrase 正则扫描清单
 │

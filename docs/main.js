@@ -29,7 +29,7 @@ const AGENTS_PATH  = './AGENTS.md';
 function resolvePath(logicalPath) {
   // `state/chapters/ch001.md`  -> `./demo_snapshot/chapters/ch001.md`
   // `state/outline.json`       -> `./demo_snapshot/outline.json`
-  // `rules/24-iron-laws.md`    -> `./rules/24-iron-laws.md`
+  // `rules/iron-laws.md`       -> `./rules/iron-laws.md`
   // `AGENTS.md`                -> `./AGENTS.md`
   if (logicalPath === 'AGENTS.md') return AGENTS_PATH;
   if (logicalPath.startsWith('state/')) return SNAPSHOT_BASE + logicalPath.slice('state/'.length);
@@ -88,7 +88,7 @@ const LESSONS = [
     ],
     code_pointers: [
       { label: 'src/agents/evaluator.py', desc: '对抗人设 + JSON rubric + skeleton detector', github_path: 'src/agents/evaluator.py', logical_path: null },
-      { label: 'rules/18-landmines.md',   desc: '18 个雷点的结构化判据 (通用)',              github_path: 'rules/18-landmines.md',   logical_path: 'rules/18-landmines.md' },
+      { label: 'rules/landmines.md',   desc: '雷点清单的结构化判据 (通用)',              github_path: 'rules/landmines.md',   logical_path: 'rules/landmines.md' },
       { label: 'state/iron-laws-extra.md', desc: '题材特有铁律 (setting 注入)',              github_path: null,                      logical_path: 'state/iron-laws-extra.md' },
       { label: 'rules/00-information-priority.md', desc: '冲突仲裁协议 (9 级优先级 + R1..R5)', github_path: 'rules/00-information-priority.md', logical_path: 'rules/00-information-priority.md' },
     ],
@@ -129,7 +129,7 @@ const LESSONS = [
       'Evaluator 2 次 retry 仍不过 → shipped_with_debt, 写 debt.jsonl 不死循环',
     ],
     code_pointers: [
-      { label: 'rules/24-iron-laws.md', desc: '通用 golden principles (题材无关)',       github_path: 'rules/24-iron-laws.md', logical_path: 'rules/24-iron-laws.md' },
+      { label: 'rules/iron-laws.md', desc: '通用 golden principles (题材无关)',       github_path: 'rules/iron-laws.md', logical_path: 'rules/iron-laws.md' },
       { label: 'src/auditors/',         desc: 'AISlopGuard + CharacterGuard (Fan-Out 并行)', github_path: 'src/auditors',      logical_path: null },
       { label: 'src/pipeline.py',       desc: '_append_debt: retries 用尽后带债上线',   github_path: 'src/pipeline.py',       logical_path: null },
       { label: 'state/debt.jsonl',      desc: '技术债账本 (每日可还)',                  github_path: null,                    logical_path: 'state/debt.jsonl' },
@@ -500,8 +500,8 @@ function renderTree() {
   tree.appendChild(sectionHeader('rules/ (universal)'));
   [
     ['rules/00-information-priority.md', '00-information-priority.md'],
-    ['rules/24-iron-laws.md',            '24-iron-laws.md'],
-    ['rules/18-landmines.md',            '18-landmines.md'],
+    ['rules/iron-laws.md',               'iron-laws.md'],
+    ['rules/landmines.md',               'landmines.md'],
     ['rules/writing-style-core.md',      'writing-style-core.md'],
   ].forEach(([p, name]) => tree.appendChild(treeItem(p, name, '§')));
 

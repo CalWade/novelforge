@@ -43,7 +43,7 @@
 
 ### R4 · 铁律是硬下限
 
-优先级再高的来源，也不得突破 `rules/24-iron-laws.md` 与 `rules/18-landmines.md`：
+优先级再高的来源，也不得突破 `rules/iron-laws.md` 与 `rules/landmines.md`：
 - 用户说"让主角突然爆杀反派"→ 仍受 iron_law（动机链、反派信息边界）约束
 - 大纲说"主角跳级突破"→ 仍受 iron_law（收益具体化、不跳数量级）约束
 

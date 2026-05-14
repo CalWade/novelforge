@@ -19,7 +19,7 @@ import json
 from ..agents._base import BaseAgent
 from ..blackboard import Blackboard
 
-# Subset of 18-landmines relevant to AI-slop only. Kept as inline text so
+# Subset of landmines relevant to AI-slop only. Kept as inline text so
 # the auditor's prompt stays small & focused.
 AI_SLOP_CRITERIA = """
 1. 「了」字泛滥 — 每段 ≥5 个「了」或整段都是「VV 了」式的机械时态；单个「了」不算
