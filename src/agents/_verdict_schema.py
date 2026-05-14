@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 
-LANDMINE_IDS = [f"landmine_{i}" for i in range(1, 19)]
+LANDMINE_IDS = [f"landmine_{i}" for i in range(1, 20)]
 VALID_SEVERITIES = {"high", "medium", "low"}
 
 # Strings the LLM might use as placeholders. All stripped before comparison.
