@@ -37,6 +37,7 @@ import argparse
 import json
 import random
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +46,39 @@ import yaml
 
 from src import config, llm
 from src.genre_extractor.chapter_stream import ChapterStream
+
+
+# ---------- LLM retry helper ----------
+
+LLM_RETRIES = 3              # 总共尝试次数（含首次）
+LLM_RETRY_BASE_SLEEP = 2.0   # 指数退避基数秒
+
+def _call_llm_with_retry(label: str, **llm_kwargs) -> str:
+    """调 llm.chat，遇 SSL/timeout/网络类错误自动指数退避重试。
+
+    其他异常（如 JSONDecodeError）立刻抛出，不重试（内容 bug 重试也没意义）。
+    label 只用于日志，告诉用户是哪步 LLM 调用在重试。
+    """
+    last_err: Exception | None = None
+    for attempt in range(1, LLM_RETRIES + 1):
+        try:
+            return llm.chat(**llm_kwargs)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            is_transient = any(kw in msg for kw in (
+                "timeout", "timed out", "ssl", "handshake",
+                "connection", "reset by peer", "broken pipe",
+                "temporarily unavailable", "502", "503", "504",
+            ))
+            if not is_transient or attempt == LLM_RETRIES:
+                raise
+            last_err = e
+            sleep = LLM_RETRY_BASE_SLEEP * (2 ** (attempt - 1))
+            print(f"  [retry {attempt}/{LLM_RETRIES-1}] {label}: {type(e).__name__}: {e} — sleep {sleep}s",
+                  flush=True)
+            time.sleep(sleep)
+    # 不可达，编译器安心用
+    raise RuntimeError(f"{label}: exhausted retries: {last_err}")
 
 
 # ---------- 调优常量 ----------
@@ -128,7 +162,8 @@ def _analyze_window(
         title=title, start_ch=start_ch, end_ch=end_ch, text=text,
     )
     try:
-        raw = llm.chat(
+        raw = _call_llm_with_retry(
+            f"window {title} ch{start_ch}-{end_ch}",
             system=_WINDOW_SYSTEM,
             user=user,
             agent_name="novel_dna_window",
@@ -211,7 +246,8 @@ def _synthesize_book_dna(book: BookDNA) -> str:
         n_windows=len(book.window_notes),
         window_dump=window_dump,
     )
-    raw = llm.chat(
+    raw = _call_llm_with_retry(
+        f"digest {book.title}",
         system=_DIGEST_SYSTEM.format(title=book.title),
         user=user,
         agent_name="novel_dna_digest",
@@ -308,6 +344,25 @@ _SYNTH_SYSTEM = """你是风格融合师 & 世界观架构师。用户会给你 
 
 任务：**同框架换核心设定** 地创造一个**接地气、可读性强**的小说 preset。
 
+## ⚡ 绝对铁律（Step 0）：**保留源小说的大类题材**
+
+**在做任何事之前，先识别 N 本源小说的共性题材类型**。识别标准：
+
+- 若 N 本都是 **末世类**（如丧尸末世、虫潮末世、游戏化末世）→ 新 preset **必须**也是末世类，只换末世的**载体/成因/生存方式**
+- 若 N 本都是 **修真类** → 新 preset 必须也是修真类
+- 若 N 本都是 **星际/赛博类** → 新 preset 必须也是同类
+- 若 N 本都是 **现代都市奇幻** → 新 preset 必须也是现代都市奇幻
+- 若 N 本**跨类题材**（如一本末世+一本修真+一本民国）→ 选其中**最多的那一类**，或**综合出共同的戏剧氛围**（如"都带生存焦虑 + 系统机制"→ 保留"生存+系统"）
+
+**示例（针对用户的三本末世系统类素材）**：
+- 地球OL = 末世游戏化
+- 末世虫潮 = 末世虫族
+- 末日生存方案供应商 = 末世+多元宇宙任务
+
+→ 新 preset **必须**在 **末世 + 系统机制** 大类下。不允许切换到"现代都市债务催收"、"古代修真散修"、"民国租界帮派"等**其他类型**。可以换末世的具体载体（如从"虫潮"换成"雾霭末日"、从"游戏化"换成"契约化"），但不能跳出末世大类。
+
+**违反此铁律即本次生成失败**——检查你给的输出 `display_name / one_line_pitch / era_md` 是否还能被源小说的读者群体在书店顺手拿起来看。如果"末世爱好者"对你产出的新 preset 没有兴趣，说明你切到了错误的题材类。
+
 ## 0. 总原则（最重要，违反即失败）
 
 - **合理性 > 新奇**。读者的第一感是"这个世界**可能**成立"，再是"挺有意思"。**不是**"这作者在玩什么行为艺术"。
@@ -375,7 +430,7 @@ _SYNTH_SYSTEM = """你是风格融合师 & 世界观架构师。用户会给你 
 ## 5. era.md 必须包含（强调"小而具体"）
 
 - **世界观反常**：一条可以 50 字说清的反常规则（不是"整个世界语言崩坏"，是"末世第三年，所有幸存者必须每周签一次契约才能吃喝"、"城中村 3 栋 22 楼以上只在午夜 12 点到 1 点 17 分存在"、"灵气枯竭后散修只能靠偷渡正道运输船蹭残留灵气"）。
-- **时代锚点**：明确选定一个**有真实质感的具体时空**——可以是当代中国（2020s）、近代历史（民国/八九十年代）、修真宗门、末世废土、星际矿区、西幻王国、武侠江湖……**任选一个**，但必须**具体到能想象出建筑、衣着、货币、交通、日常仪式**的程度，不要"未来世界"、"灵气复苏后的地球"这种浮空设定。优先选源小说群体里**已有共性**的时空类型（如三本都是末世，新 preset 也走末世类，只是末世的**载体**换掉）。
+- **时代锚点**：严格遵守开头 Step 0 识别的**大类题材**。如源小说都是末世类，时代锚点必须是某种末世；如修真类，必须是某种修真时空。在大类内部可以自由选具体时空（如末世可以是"虫潮后第三年"/"灵气枯竭的废土"/"契约化末世"等）。**绝对不允许跨大类切换**（末世类不可切到现代都市，修真类不可切到星际）。时空必须**具体到能想象出建筑、衣着、货币、交通、日常仪式**的程度，不要"未来世界"、"灵气复苏后的地球"这种浮空设定。
 - **真实可感的环境锚点**：列出 1-2 个**辨识度极高的地理/场景类型**作为故事主舞台（如"九十年代东北资源城"、"末世后第三年的高速公路服务区遗址"、"修真界飞升通道关闭后的散修聚集地"、"星海纪元 2304 年外环带矿工殖民站"），不要泛泛"某个城市"或"末日大陆"。
 - **社会结构 / 权力格局**：基于该时空的某个**具体切片**展开（末世幸存者营地生态 / 修真散修被正道门派压榨生态 / 民国租界帮派分布 / 星际矿工殖民站权力结构 / 现代城中村债务生态 等），不要造"议会"、"联盟"这种抽象组织名。
 - **主角身份**：**该时空里的世俗身份 + 隐秘使命**（末世幸存者营地炊事兵 + 能看见食物里毒素含量 / 散修跑腿小厮 + 能听见法器的前世记忆 / 捕快小吏 + 幽冥案卷誊写人 / 殡葬师 + 死者最后见证人 等）。
@@ -420,7 +475,8 @@ def _synthesize_preset(
         "---\n\n"
         "# 你的输出（严格单个 JSON 对象，按 system 指定的 schema）"
     )
-    raw = llm.chat(
+    raw = _call_llm_with_retry(
+        "synthesize preset",
         system=_SYNTH_SYSTEM,
         user=user,
         agent_name="novel_dna_synthesizer",
