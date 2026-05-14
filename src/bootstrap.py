@@ -52,6 +52,11 @@ OPTIONAL_PROJECT_FILES = (
     # 行为退回到纯 LLM 外推（100% 向后兼容）。详见
     # docs/superpowers/specs/genre-mining-v2-step1-sensory-kit.md
     "era_sensory_kit.yaml",
+    # dna_structured.yaml: NovelDNA Stage 2.5 产出的可查表 tips 库（按
+    # chapter_type × scene_purpose 索引）。Planner/Generator 按当前章节的
+    # 语境查表注入相关创作手法。可选——不存在时退回到"只读 4 份题材文件"
+    # 的旧行为（100% 向后兼容）。
+    "dna_structured.yaml",
 )
 
 
@@ -306,6 +311,15 @@ def create_project(
             shutil.copy2(
                 preset_dir / "era_sensory_kit.yaml",
                 project_dir / "era_sensory_kit.yaml",
+            )
+        # Optional dna_structured.yaml (NovelDNA Stage 2.5). 按 chapter_type ×
+        # scene_purpose 索引的创作 tips 库。Planner/Generator 按当前章节的
+        # 语境查表注入样本。不存在时两个 agent 都不读，行为退回到"只看 4 份
+        # 题材文件"的旧模式。
+        if (preset_dir / "dna_structured.yaml").exists():
+            shutil.copy2(
+                preset_dir / "dna_structured.yaml",
+                project_dir / "dna_structured.yaml",
             )
     elif blank_genre:
         # Blank stubs so the project is structurally complete.

@@ -65,6 +65,11 @@ class Planner(BaseAgent):
         # path — behaviour is 100% backward-compatible.
         sensory_kit_block, sensory_kit_inputs = _read_sensory_kit(bb)
 
+        # DNA tips: NovelDNA Stage 2.5 产物，按 chapter_type × scene_purpose
+        # 索引的创作手法样本库。Planner 在决定 chapter_type 和 scenes 时
+        # 可以参考相关桶里的 tips。不存在 → 跳过（100% 向后兼容）。
+        dna_tips_block, dna_tips_inputs = _read_dna_tips(bb, for_agent="planner")
+
         inputs_read: list[str] = (
             ["state/outline.json", "state/setting.yaml"]
             + summary_inputs
@@ -72,6 +77,7 @@ class Planner(BaseAgent):
             + pending_hooks_inputs
             + golden_three_inputs
             + sensory_kit_inputs
+            + dna_tips_inputs
         )
 
         system = (
@@ -125,6 +131,7 @@ class Planner(BaseAgent):
             f"{pending_hooks_text}\n\n"
             + golden_three_block
             + sensory_kit_block
+            + dna_tips_block
             + f"# 前情摘要（Context Reset，只有这一点上下文）\n\n{prior_summary_block}\n\n"
             f"# 输出 JSON 结构\n\n"
             "```json\n"
@@ -284,3 +291,111 @@ def _read_sensory_kit(bb) -> tuple[str, list[str]]:
         + "\n".join(lines) + "\n\n"
     )
     return block, ["state/era_sensory_kit.yaml"]
+
+
+def _read_dna_tips(bb, *, for_agent: str = "planner") -> tuple[str, list[str]]:
+    """Read dna_structured.yaml (NovelDNA Stage 2.5 产物) and render as prompt block.
+
+    Planner 看整张表自己挑；Generator 通过同样的 helper 但可能按已知的
+    scene purpose 做更聚焦的渲染（当前版本先给完整表，未来可细化）。
+
+    Absent → returns empty block + empty inputs（100% 向后兼容）。
+    Malformed YAML → 静默降级为空。
+    """
+    if not bb.exists("dna_structured.yaml"):
+        return "", []
+    try:
+        tips = bb.read_yaml("dna_structured.yaml") or {}
+    except Exception:
+        return "", []
+    if not isinstance(tips, dict):
+        return "", []
+
+    by_chap = tips.get("tips_by_chapter_type") or {}
+    by_purp = tips.get("tips_by_scene_purpose") or {}
+    hooks = tips.get("hook_recipes") or {}
+    universal = tips.get("universal") or {}
+
+    # 全空不发射
+    if not (by_chap or by_purp or hooks or universal):
+        return "", []
+
+    lines: list[str] = []
+
+    def _render_bucket(label: str, bucket: dict, limit_per_key: int = 6) -> None:
+        if not isinstance(bucket, dict):
+            return
+        for key, items in bucket.items():
+            if not items or not isinstance(items, list):
+                continue
+            lines.append(f"  ### {label} · {key}")
+            for item in items[:limit_per_key]:
+                lines.append(f"    - {item}")
+
+    if by_chap:
+        _render_bucket("按章节类型", by_chap)
+    if by_purp:
+        _render_bucket("按场景目的", by_purp)
+
+    if hooks:
+        oh = hooks.get("opening_hooks") or []
+        ch = hooks.get("closing_hooks") or []
+        if oh:
+            lines.append("  ### 章首钩子配方库")
+            for h in oh[:5]:
+                if isinstance(h, dict):
+                    lines.append(
+                        f"    - [{h.get('pattern', '?')}] {h.get('sample', '')} "
+                        f"(适用: {','.join(h.get('applies_to', []) or [])})"
+                    )
+                else:
+                    lines.append(f"    - {h}")
+        if ch:
+            lines.append("  ### 章末钩子配方库")
+            for h in ch[:5]:
+                if isinstance(h, dict):
+                    lines.append(
+                        f"    - [{h.get('pattern', '?')}] {h.get('sample', '')} "
+                        f"(适用: {','.join(h.get('applies_to', []) or [])})"
+                    )
+                else:
+                    lines.append(f"    - {h}")
+
+    if universal:
+        for label_zh, key in (
+            ("通用 · 写作风格", "writing_style"),
+            ("通用 · 读者情感锚", "value_anchors"),
+            ("通用 · 人物处理", "character_handling"),
+        ):
+            items = universal.get(key) or []
+            if items:
+                lines.append(f"  ### {label_zh}")
+                for item in items[:5]:
+                    lines.append(f"    - {item}")
+
+    if not lines:
+        return "", []
+
+    header = (
+        "# DNA 创作手法样本库（dna_structured.yaml）\n\n"
+        "下面是从多本源小说归纳出的**可直接借鉴的创作手法**，按 chapter_type、"
+        "scene_purpose、hook 类型、通用风格 4 层组织。"
+    )
+    if for_agent == "planner":
+        header += (
+            "\n\n**使用方式**：\n"
+            "- 决定 chapter_type 时，对照『按章节类型』各桶里的 tips，"
+            "选最能发挥源小说手法优势的类型；\n"
+            "- 写每个 scene 时，按其 purpose 对应『按场景目的』的 tips 设计场面；\n"
+            "- opening_hook / closing_hook 优先从钩子配方库里**引用 pattern + 改写 sample**；\n"
+            "- 『通用』那几条每章都要遵守，是全书的风格地基。\n\n"
+        )
+    elif for_agent == "generator":
+        header += (
+            "\n\n**使用方式**：\n"
+            "- 写当前 scene 的正文时，按 scene.purpose 查『按场景目的』的 tips，"
+            "按章的 chapter_type 查『按章节类型』的 tips；\n"
+            "- 钩子配方库里的 pattern 和 sample 是**可以直接仿照的句式骨架**；\n"
+            "- 『通用』那几条决定全文口味，不可偏离。\n\n"
+        )
+    return header + "\n".join(lines) + "\n\n", ["state/dna_structured.yaml"]

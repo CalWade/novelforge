@@ -55,6 +55,13 @@ class Generator(BaseAgent):
             "rules/writing-style-core.md",
         ]
 
+        # DNA tips (NovelDNA Stage 2.5): 按 chapter_type × scene_purpose 索引
+        # 的创作手法样本库。Generator 写正文时按本章 chapter_type + scenes 的
+        # purpose 查表。不存在 → 跳过（100% 向后兼容）。
+        from .planner import _read_dna_tips
+        dna_tips_block, dna_tips_inputs = _read_dna_tips(bb, for_agent="generator")
+        inputs_read.extend(dna_tips_inputs)
+
         prior_summary = ""
         if chapter >= 2:
             p = f"summaries/ch{chapter-1:03d}.md"
@@ -147,6 +154,7 @@ class Generator(BaseAgent):
             + writing_style_extra
             + f"\n\n# 时代/世界观事实包（仅供融入场景，严禁整段复述）\n\n"
             + era
+            + (f"\n\n{dna_tips_block}" if dna_tips_block else "")
         )
 
         user = (

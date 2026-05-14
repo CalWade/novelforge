@@ -511,6 +511,7 @@ def _write_preset(
     synth: dict,
     source_books: list[Path],
     dna_cards: list[BookDNA],
+    structured_tips: dict | None = None,
 ) -> Path:
     """Persist the synthesized preset to presets/<preset_id>/."""
     preset_dir = config.PRESETS_DIR / preset_id
@@ -539,7 +540,19 @@ def _write_preset(
         synth["iron_laws_extra_md"], encoding="utf-8",
     )
 
-    # 归档 DNA 卡作为"创作档案"（审计用，跟踪新 preset 的思想来源）
+    # 结构化 DNA tips（按 chapter_type × scene_purpose 双索引的可查表版）
+    # Planner/Generator 写章节时按当前 chapter_type / scene purpose 查表注入相关样本。
+    # schema 稳定性由 test_novel_dna_structured.py 守护。
+    if structured_tips:
+        (preset_dir / "dna_structured.yaml").write_text(
+            yaml.safe_dump(
+                structured_tips, allow_unicode=True, sort_keys=False, width=100,
+            ),
+            encoding="utf-8",
+        )
+
+    # 归档 DNA 卡作为"创作档案"（审计用，跟踪新 preset 的思想来源；
+    # 生产端不直接读这里，只读上面的 dna_structured.yaml）
     archive_dir = preset_dir / "dna_cards"
     archive_dir.mkdir()
     for book in dna_cards:
@@ -549,6 +562,162 @@ def _write_preset(
         )
 
     return preset_dir
+
+
+# ---------- Stage 2.5: 结构化 DNA 卡为可查表 tips ----------
+
+_STRUCTURE_SYSTEM = """你是小说创作教练，擅长把"抽象的创作经验"整理成"可按情境查表"的操作手册。
+
+用户会给你：
+1. N 份 DNA 卡（从多本小说归纳出的戏剧结构/写作风格/人物手法/钩子配方）
+2. 刚刚融合产出的**新 preset 的 era.md**（新世界观事实包）
+
+任务：提取出所有"可直接被小说生产 agent 消费"的**操作 tips**，按 4 个维度索引：
+
+1. **tips_by_chapter_type**：按章节类型（战斗/布局/过渡/回收）分桶
+   - 每桶列出 3-6 条"写这类章节时可以套用的具体手法"
+   - **每条要求**：verbatim 动作指令（如"用一个配角问短句把主角身份误读破掉"），
+     不要空话（如"节奏紧凑")。
+   - 每条要**无源小说专属名词**——借鉴方法不借鉴专属设定。
+
+2. **tips_by_scene_purpose**：按场景目的（推进主线/塑造人物/埋伏笔）分桶
+   - 每桶列出 3-6 条"写这类场景时可以用的具体方法"
+
+3. **hook_recipes**：章首/章末钩子配方库
+   - opening_hooks: 3-5 条不同款式的章首钩子公式（带样板句式）
+   - closing_hooks: 3-5 条不同款式的章末钩子公式（威胁升级型/谜底浮现型/新角色预告型 等）
+   - 每条要带"适用于什么样的章节"的标注
+
+4. **universal**：全书通用，不分章节也要读的原则
+   - writing_style: 3-5 条全局风格招式（句式节奏 / 高频词 / POV 策略 / 对白密度）
+   - value_anchors: 2-4 条"读者为什么会上瘾"（爽感 / 生存智慧 / 冷幽默 / 血性 等）
+   - character_handling: 2-4 条人物塑造通用手法（登场方式 / 性格化定型 / 关系张力）
+
+## 输出格式（严格 YAML）
+
+```yaml
+schema_version: 1
+tips_by_chapter_type:
+  战斗:
+    - "<具体手法 1>"
+    - "<具体手法 2>"
+    - "..."
+  布局:
+    - "..."
+  过渡:
+    - "..."
+  回收:
+    - "..."
+tips_by_scene_purpose:
+  推进主线:
+    - "..."
+  塑造人物:
+    - "..."
+  埋伏笔:
+    - "..."
+hook_recipes:
+  opening_hooks:
+    - pattern: "<款式名>"
+      sample: "<样板句式或例子>"
+      applies_to: ["战斗", "布局"]  # 适用的 chapter_type
+    - ...
+  closing_hooks:
+    - pattern: "..."
+      sample: "..."
+      applies_to: [...]
+universal:
+  writing_style:
+    - "..."
+  value_anchors:
+    - "..."
+  character_handling:
+    - "..."
+```
+
+## 硬约束
+
+- 所有 tips 必须是**动作指令**（主谓宾，告诉作者"该怎么做"），不要形容词式空话
+- 禁止使用任何源小说的专属名词（角色名/组织名/地名/技能名）
+- 每条 tips ≤ 50 字
+- 严格输出一份 YAML，不加任何 ```yaml 围栏外的文字
+- tips_by_chapter_type 的 4 个 key 必须齐全（战斗/布局/过渡/回收）
+- tips_by_scene_purpose 的 3 个 key 必须齐全（推进主线/塑造人物/埋伏笔）
+"""
+
+
+_STRUCTURE_USER_TEMPLATE = """# 新 preset 的 era.md（新世界观事实包，用来对齐 tips 的语境）
+
+{era_md}
+
+---
+
+# {n_books} 份源小说 DNA 卡
+
+{card_dump}
+
+---
+
+# 你的输出（严格 YAML，按 system 指定的 schema）"""
+
+
+def _structure_dna_tips(
+    dna_cards: list[BookDNA], era_md: str,
+) -> dict:
+    """Stage 2.5: 把 N 份 DNA 卡 + 新 era.md 整理成可按情境查表的 tips 库。
+
+    返回的 dict 会被写成 presets/<id>/dna_structured.yaml，供生产端
+    Planner/Generator 按 chapter_type / scene_purpose 查表注入相关样本。
+    """
+    card_dump = "\n\n========== 下一张 DNA 卡 ==========\n\n".join(
+        f"# DNA 卡 {i+1}: 源 = 《{b.title}》\n\n{b.digest_markdown}"
+        for i, b in enumerate(dna_cards)
+    )
+    user = _STRUCTURE_USER_TEMPLATE.format(
+        era_md=era_md[:6000],  # era.md 可能很长，取前 6000 字
+        n_books=len(dna_cards),
+        card_dump=card_dump,
+    )
+    raw = _call_llm_with_retry(
+        "structure dna tips",
+        system=_STRUCTURE_SYSTEM,
+        user=user,
+        agent_name="novel_dna_structurer",
+        temperature=0.2,
+        max_tokens=4500,
+        response_format="text",  # YAML 不走 JSON mode
+        inputs_read=[f"dna_cards/(n={len(dna_cards)}) + era.md"],
+    )
+
+    # 剥 ```yaml 围栏
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        _, _, text = text.partition("\n")
+        if "```" in text:
+            text = text.rpartition("```")[0]
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise RuntimeError(f"structurer returned invalid YAML: {e}")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"structurer output not a dict: {type(data).__name__}")
+
+    # 确保必需字段齐全，缺则补空
+    data.setdefault("schema_version", 1)
+    data.setdefault("tips_by_chapter_type", {})
+    data.setdefault("tips_by_scene_purpose", {})
+    data.setdefault("hook_recipes", {"opening_hooks": [], "closing_hooks": []})
+    data.setdefault("universal", {})
+
+    # 确保 chapter_type 4 个桶齐全（空桶也要有键，避免查表时 KeyError）
+    for k in ("战斗", "布局", "过渡", "回收"):
+        data["tips_by_chapter_type"].setdefault(k, [])
+    # 确保 scene_purpose 3 个桶齐全
+    for k in ("推进主线", "塑造人物", "埋伏笔"):
+        data["tips_by_scene_purpose"].setdefault(k, [])
+
+    return data
 
 
 # ---------- CLI ----------
@@ -621,7 +790,28 @@ def main(argv: list[str] | None = None) -> int:
     # Stage 2: 融合
     print(f"\n========== Stage 2: 融合 {len(dna_cards)} 本 DNA → 新 preset ==========")
     synth = _synthesize_preset(args.preset_id, dna_cards, hint=args.hint)
-    preset_dir = _write_preset(args.preset_id, synth, source_paths, dna_cards)
+
+    # Stage 2.5: 把 DNA 卡结构化为 chapter_type × scene_purpose 可查表
+    print(f"\n========== Stage 2.5: 结构化 DNA tips（生产端消费） ==========")
+    try:
+        structured_tips = _structure_dna_tips(dna_cards, synth["era_md"])
+        print(
+            f"  tips: "
+            f"chapter_type={len(structured_tips['tips_by_chapter_type'])} 桶 · "
+            f"scene_purpose={len(structured_tips['tips_by_scene_purpose'])} 桶 · "
+            f"opening_hooks={len(structured_tips['hook_recipes'].get('opening_hooks', []))} · "
+            f"closing_hooks={len(structured_tips['hook_recipes'].get('closing_hooks', []))}"
+        )
+    except Exception as e:
+        print(f"  ✗ structure failed: {e}")
+        print(f"  preset 仍会写入，但不含 dna_structured.yaml；生产端退回到"
+              f" LLM 外推。")
+        structured_tips = None
+
+    preset_dir = _write_preset(
+        args.preset_id, synth, source_paths, dna_cards,
+        structured_tips=structured_tips,
+    )
     print(f"\n✓ wrote preset: {preset_dir}")
     print(f"  files: genre.yaml / era.md / writing-style-extra.md / "
           f"iron-laws-extra.md / dna_cards/ / novels/")
