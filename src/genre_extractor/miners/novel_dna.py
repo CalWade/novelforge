@@ -756,18 +756,36 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: novel not found: {p}")
             return 1
 
-    # Stage 1: 每本独立 DNA 卡
-    print(f"\n========== Stage 1: 单本小说 DNA 分析 ==========")
+    # Stage 1: 每本独立 DNA 卡 — 跨本并发
+    # 每本内部已经用 ThreadPoolExecutor 并发 4 个窗口。这里外层再把 N 本
+    # 之间也并发，整体并发度 = N × WINDOW_WORKERS（3 本 × 4 = 12）。
+    # 三本独立，0 共享状态，并发纯加速。失败时单本抛错不影响其他本。
+    print(f"\n========== Stage 1: 单本小说 DNA 分析（跨本并发 {len(source_paths)}） ==========")
     dna_cards: list[BookDNA] = []
-    for p in source_paths:
-        try:
-            book = mine_book_dna(
-                p, windows_per_book=args.windows_per_book, seed=args.seed,
-            )
-            dna_cards.append(book)
-        except Exception as e:
-            print(f"ERROR analyzing {p.name}: {e}")
-            return 1
+    book_errors: list[tuple[Path, Exception]] = []
+    with ThreadPoolExecutor(max_workers=max(1, len(source_paths))) as pool:
+        futs = {
+            pool.submit(
+                mine_book_dna, p,
+                windows_per_book=args.windows_per_book, seed=args.seed,
+            ): p
+            for p in source_paths
+        }
+        for fut in as_completed(futs):
+            p = futs[fut]
+            try:
+                dna_cards.append(fut.result())
+            except Exception as e:  # noqa: BLE001
+                book_errors.append((p, e))
+                print(f"ERROR analyzing {p.name}: {e}", flush=True)
+
+    if book_errors:
+        # 任何一本失败都中止——Stage 2 融合需要完整的 N 份 DNA
+        return 1
+
+    # 按原始输入顺序排序（并发完成顺序不固定，DNA 卡用户看时希望稳定顺序）
+    order = {p: i for i, p in enumerate(source_paths)}
+    dna_cards.sort(key=lambda b: order[b.source_path])
 
     # dry-run 必须有归档点，否则 DNA 卡丢内存里没意义
     if args.dry_run and not args.dna_out:
