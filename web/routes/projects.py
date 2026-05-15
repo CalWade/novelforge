@@ -32,6 +32,38 @@ from web._shared import (
 bp = Blueprint("projects", __name__)
 
 
+def _enable_cast_tracking(pid: str) -> None:
+    """Stamp `cast_tracking_enabled: true` into projects/<pid>/project.yaml.
+
+    Runs right after `create_project` so the freshly-created project.yaml
+    declares the flag BEFORE bootstrap synthesizes setting.yaml. The 3
+    built-in books are not touched by this code path (they already exist
+    on disk and never go through /api/projects/new), so their setting.yaml
+    will continue to lack the flag → CastUpdater stays dormant → byte-level
+    behavior unchanged.
+
+    Failures are swallowed: the project was already created successfully;
+    losing the flag just means cast tracking is off, which is recoverable
+    by editing project.yaml manually.
+    """
+    import yaml as _yaml
+    pyaml = config.PROJECTS_DIR / pid / "project.yaml"
+    if not pyaml.exists():
+        return
+    try:
+        data = _yaml.safe_load(pyaml.read_text(encoding="utf-8")) or {}
+        if data.get("cast_tracking_enabled") is True:
+            return
+        data["cast_tracking_enabled"] = True
+        pyaml.write_text(
+            _yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+    except (OSError, _yaml.YAMLError):
+        # Non-fatal: project already exists; flag can be added by hand later.
+        return
+
+
 @bp.get("/api/projects")
 def api_projects():
     from src import bootstrap
@@ -150,6 +182,11 @@ def api_project_new():
             overwrite=bool(body.get("overwrite", False)),
             warnings_collector=warnings,
         )
+        # Enable cast tracking for newly-created projects so CharacterGuard
+        # gets the running演员表 from chapter 1 onward. 3 本内置书的
+        # project.yaml 不会被这里碰到（不走 /api/projects/new），保持原样
+        # → flag 默认 false → 旧行为字节级不变。
+        _enable_cast_tracking(pid)
         bootstrap_project(pid)
     except ValueError as e:
         return jsonify({"ok": False, "reason": str(e)}), 400

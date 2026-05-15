@@ -33,6 +33,7 @@ from .agents.generator import Generator
 from .agents.packaging import PackagingAgent
 from .agents.planner import Planner
 from .agents.status_card_updater import StatusCardUpdater
+from .agents.cast_updater import CastUpdater
 from .agents.hook_keeper import HookKeeper
 from .agents.resource_ledger import ResourceLedger, setting_has_resource_schema
 from .agents.summarizer import Summarizer
@@ -246,6 +247,17 @@ def run_chapter(bb: Blackboard, chapter: int) -> dict:
     # the chapter prose + previous card + characters + setting. Planner will
     # consume this at the start of ch{N+1}.
     _stage("update_status_card", lambda: StatusCardUpdater().run(bb, chapter=chapter))
+
+    # 4a1b. Cast tracking — maintain characters-cast.yaml (running演员表).
+    # 仅当 setting.yaml.cast_tracking_enabled=true 时跑。3 本内置书的
+    # project.yaml 没这个字段 → setting.yaml 也没 → flag 默认 False → 旧行为字节级不变。
+    # 新作品向导/CLI 在创建作品时显式写 cast_tracking_enabled: true 来开启。
+    try:
+        _setting_for_flag = bb.read_yaml("setting.yaml") or {}
+    except (OSError, Exception):
+        _setting_for_flag = {}
+    if _setting_for_flag.get("cast_tracking_enabled", False):
+        _stage("cast_update", lambda: CastUpdater().run(bb, chapter=chapter))
 
     # 4a2. Hook ledger — maintain pending_hooks.md (unresolved hooks).
     # Independent bookkeeping agent; reads prose + prior ledger + status card.
