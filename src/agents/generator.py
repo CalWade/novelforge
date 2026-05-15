@@ -7,6 +7,7 @@ Reads (all genre content comes from the active setting pack via state/):
   - state/era.md                           — setting's world/era facts
   - state/writing-style-extra.md           — setting-specific style quirks
   - rules/writing-style-core.md            — universal style rules
+  - rules/ai-rhythm-taboos.md              — hard taboos, appended last (conflict arbitration)
   - state/summaries/ch{N-1}.md             — continuity from prior chapter
 
 Writes:
@@ -36,6 +37,7 @@ class Generator(BaseAgent):
 
         writing_style_core = self._read_rule("writing-style-core.md")
         writing_style_extra = bb.read_text("writing-style-extra.md")
+        ai_rhythm_taboos = self._read_rule("ai-rhythm-taboos.md")
         era = bb.read_text("era.md")
 
         # Chapter-type-specific emphasis (skill #12)
@@ -53,6 +55,7 @@ class Generator(BaseAgent):
             "state/era.md",
             "state/writing-style-extra.md",
             "rules/writing-style-core.md",
+            "rules/ai-rhythm-taboos.md",
         ]
 
         # DNA tips (NovelDNA Stage 2.5): 按 chapter_type × scene_purpose 索引
@@ -155,6 +158,8 @@ class Generator(BaseAgent):
             + f"\n\n# 时代/世界观事实包（仅供融入场景，严禁整段复述）\n\n"
             + era
             + (f"\n\n{dna_tips_block}" if dna_tips_block else "")
+            + "\n\n# ⚠ 最终硬规则（冲突仲裁：与上文冲突时以此为准）\n\n"
+            + ai_rhythm_taboos
         )
 
         user = (

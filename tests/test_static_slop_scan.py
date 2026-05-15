@@ -142,9 +142,16 @@ def test_thresholds_documented():
 
 
 def test_writing_style_core_has_new_taboos():
-    """writing-style-core.md 必须增加 'AI 时代新增禁忌' 节."""
-    text = (config.RULES_DIR / "writing-style-core.md").read_text(encoding="utf-8")
-    assert "AI 时代新增禁忌" in text
+    """禁忌已从 writing-style-core 抽到独立文件 ai-rhythm-taboos.md
+    （置 Generator system prompt 尾部以胜过 dna_tips/extra 的 recency bias）。
+    本测试改为验证新文件存在且含核心阈值。
+    """
+    p = config.RULES_DIR / "ai-rhythm-taboos.md"
+    assert p.exists(), "rules/ai-rhythm-taboos.md must exist as taboos source-of-truth"
+    text = p.read_text(encoding="utf-8")
+    # 4 类节奏病关键词
+    for kw in ("否定对比", "破折号", "短段", "明喻"):
+        assert kw in text, f"ai-rhythm-taboos.md missing keyword '{kw}'"
 
 
 def test_slop_thresholds_table_shape():
