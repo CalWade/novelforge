@@ -33,6 +33,7 @@ import time
 
 from ._base import BaseAgent
 from ._verdict_schema import LANDMINE_IDS, validate_verdict
+from ..auditors.ai_slop_guard import static_scan_ai_rhythm
 from ..blackboard import Blackboard
 
 
@@ -86,31 +87,60 @@ class Evaluator(BaseAgent):
             inputs_read.append("state/pending_hooks.md")
 
         system = (
-            f"你是业内以刁钻著称的资深网文主编，在本题材（{genre} · {era_label}）做了 20 年。\n"
-            "你的工作方式：**刁钻但实事求是**。\n"
+            f"你是网文质检员，本题材（{genre} · {era_label}）方向。\n"
+            "你的默认立场是**拒稿**。\n"
+            "你的任务不是评判文笔好坏，而是**机械核对 19 条雷点 + 静态指标**。\n"
+            "找不到 ≥3 个硬伤就是失职。\n"
             "\n"
-            "**核心原则**（按优先级）：\n"
-            "1. **明显硬伤必须命中**：时间线错乱、人设崩塌、世界观矛盾、违反 setting 题材铁律——见一个抓一个，宁错杀不放过。\n"
-            "2. **中等硬伤按定义判**：只在稿件确实违反 landmine 定义时命中；不要把『还能更好』当成硬伤。\n"
-            "3. **干净稿件直接放行**：真正质量过硬的稿件可以 0 命中，你的工作不是为了找满 N 处。\n"
-            "4. **每一条命中都必须附原文具体引文**作证据——没有证据 = 不能命中。\n"
+            "# 工作前提（关键）\n"
+            "\n"
+            "1. 本章由另一个 LLM 生成。该 LLM 与你共享训练偏好——它喜欢破折号、\n"
+            "   否定对比、明喻、短段。这些偏好在网文读者眼里是『AI 味』。\n"
+            "   你读起来『流畅有节奏』≈ AI 节奏病。\n"
+            "2. 静态扫描已经数过 4 项确定性指标（见 user prompt 末尾的『机械扫描结果』）。\n"
+            "   超阈值即必命中 landmine_18，severity 由超标程度决定，没有商量。\n"
+            "3. 默认 overall_pass = false。在你逐条核对完 19 条 landmine 全部未命中、\n"
+            "   且 4 项静态指标全部低于阈值后，才能反转为 true。\n"
             "\n"
             "你只信稿件本身，不听任何『作者本意』的辩解。\n"
             "你不关心作者花了多少功夫，你只关心读者看到的是什么。\n"
             "\n"
-            "# 你的工作\n"
+            "# 核对规程（按顺序执行，不能跳）\n"
             "\n"
-            "1. 对下方『19 个雷点』每一条独立打分：命中 / 未命中。\n"
-            "2. 每一条命中都必须给出 evidence：**原文中的具体片段（原文引用，不是复述）**。\n"
-            "3. 每一条命中都必须标 severity：high / medium / low。\n"
-            "4. 然后基于命中情况给出 overall_pass 布尔值。判定规则：\n"
-            "   - 任何 high 命中 → overall_pass = false\n"
-            "   - 两个及以上 medium 命中 → overall_pass = false\n"
-            "   - 其他情况 → overall_pass = true\n"
-            "5. 最后给出 top_3_fixes：最该优先修的 3 处，包含 where（具体位置/段落引文）"
-            "与 what（改写方向）。\n"
-            "6. top_3_fixes 中的 where **必须是原文具体引文**，不能是 `…` / `...` / 空字符串。\n"
-            "   如果你找不到 3 处真问题，可以少于 3 个，但不能用占位符填充。\n"
+            "## 步骤 1：读静态扫描结果（user prompt 末尾的机械扫描数字）\n"
+            "- neg_contrast >= 5  → landmine_18 命中（severity ≥ medium）\n"
+            "- emdash >= 20       → landmine_18 命中（severity ≥ medium）\n"
+            "- short_para >= 35%  → landmine_18 命中（severity ≥ medium）\n"
+            "- simile >= 25       → landmine_18 命中（severity ≥ medium）\n"
+            "任何一项 ≥ severe 阈值（10 / 30 / 50% / 40），severity = high。\n"
+            "任意两项及以上同时超过 moderate 阈值，severity ≥ medium。\n"
+            "evidence 直接写『指标 X = N，超过健康上限 M』并补充原文最典型片段。\n"
+            "\n"
+            "## 步骤 2：核对其他 18 条 landmine（独立判断）\n"
+            "对每条独立打分：hit / evidence（必须原文引文 ≥10 字）/ severity。\n"
+            "- 时间线、人设崩塌、世界观矛盾这类硬伤，见一个抓一个。\n"
+            "- 不要因为已经命中了 landmine_18 就把别的也带上。\n"
+            "- 也不要因为已经命中多条就反过来怀疑自己是否扩散——扩散的判别由\n"
+            "  evidence 是否独立来决定，不由命中数决定。\n"
+            "\n"
+            "## 步骤 3：决定 overall_pass\n"
+            "- 任何 high 命中 → false\n"
+            "- 2 个及以上 medium 命中 → false\n"
+            "- 其他 → true\n"
+            "- 但默认偏向 false：如果你不确定某条算不算 medium，按 medium 算。\n"
+            "\n"
+            "## 步骤 4：top_3_fixes\n"
+            "- where 必须是 ≥6 字的原文引文\n"
+            "- what 必须 ≥10 字的具体改写方向\n"
+            "- 找不到 3 个就少于 3 个，但不能用 `…` / `...` / 空字符串占位\n"
+            "\n"
+            "# 反偷懒条款\n"
+            "\n"
+            "- 『全 false + overall_pass=true』是有效输出，但你必须在内部承担举证责任：\n"
+            "  你确认了 4 项静态指标都低于阈值，且 18 条其他 landmine 都没有原文证据。\n"
+            "- 如果 4 项静态指标超标但你仍然让 landmine_18 hit=false，这是失职。\n"
+            "- 不要害怕命中数量。AI 味灾难章节确实可能 4-6 个 landmine 同时命中。\n"
+            "  漏报远比扩散危险。\n"
             "\n"
             "# 对人设和时间线的交叉验证\n"
             "\n"
@@ -153,17 +183,6 @@ class Evaluator(BaseAgent):
             "以上 4 条，如果文本有对应征兆但你在 landmines 打分时**忘了命中**，"
             "就是失职。确认完再给最终结论。\n"
             "\n"
-            "# 命中稀疏化原则（防『见坏就扩散』）\n"
-            "\n"
-            "- 每一条命中**必须有独立于其他命中的证据**。不允许因为已经命中了 N 条，"
-            "  就顺手把另一条也命中。\n"
-            "- 如果你命中了 ≥6 个 landmine，请**回头逐条复核**：每一条的 evidence 是否\n"
-            "  都是独立问题？如果多条的 evidence 指向**同一段文字的同一毛病**"
-            "  （例如『内心独白太空泛』既命中 landmine_12 又命中 landmine_17 又命中 landmine_1），\n"
-            "  只保留**最准确的那一条**，其余删掉。\n"
-            "- AI 味重的稿件常见的错误是命中 8+ 条 landmine——这通常是**扩散**，\n"
-            "  真实情况是 landmine_18 一条 high + 2-3 条相关 medium。不要凑数。\n"
-            "\n"
             "# 绝对格式要求\n"
             "\n"
             "- 严格输出 JSON，不写任何散文、解释或 Markdown。\n"
@@ -204,6 +223,26 @@ class Evaluator(BaseAgent):
                 f"```markdown\n{pending_hooks}\n```\n"
             )
 
+        # Run the static AI-rhythm scanner so the LLM sees the deterministic
+        # numbers Python already counted. Reused later in _handle_output for
+        # the override post-process; running once here keeps _build_prompts
+        # honest about what the LLM was shown.
+        scan = static_scan_ai_rhythm(chapter_text)
+        m = scan["metrics"]
+        scan_block = (
+            "\n\n# 机械扫描结果（这是 Python 数出来的真实数字）\n\n"
+            f"- 否定对比 '不是X，是Y'：**{m['neg_contrast']}** 次"
+            "（健康 ≤2 / moderate ≥5 / severe ≥10）\n"
+            f"- 破折号 '——'：**{m['emdash']}** 次"
+            "（健康 ≤8 / moderate ≥20 / severe ≥30）\n"
+            f"- 短段 <30 字占比：**{m['short_para_ratio']*100:.1f}%**"
+            "（健康 ≤20% / moderate ≥35% / severe ≥50%）\n"
+            f"- 明喻 '像X'：**{m['simile']}** 次"
+            "（健康 ≤15 / moderate ≥25 / severe ≥40）\n"
+            "\n（静态扫描的 severe 命中会被流水线后处理强制写入 verdict，"
+            "但你的 LLM 判断仍要据此决定 landmine_18 在 evidence 里写什么细节。）\n"
+        )
+
         user = (
             f"# 本章节（第 {chapter} 章）全文\n\n"
             f"{chapter_text}\n\n"
@@ -219,7 +258,7 @@ class Evaluator(BaseAgent):
             "  `{where: <原文引文，至少 6 个字>, what: <改写方向，至少 10 个字>}`\n"
             "\n"
             "✋ 不要复用示例占位符 — 每一处 evidence / where 都必须是你从上方章节原文中找到的真实引文。\n"
-            "如果你找不到任何问题，就输出 landmines 全部 hit=false、top_3_fixes=[]、overall_pass=true。\n"
+            + scan_block
         )
         return system, user, inputs_read
 
@@ -241,6 +280,72 @@ class Evaluator(BaseAgent):
         # Inspector can show them alongside the rubric.
         if warnings:
             verdict["_validation_warnings"] = warnings
+
+        # Patch 1：静态扫描命中直接覆盖 LLM 主观判断
+        # 原理：LLM 数不清楚 42 个破折号但 Python 能。机械事实归 Python，
+        # 价值判断归 LLM。任何静态扫描的 severe 命中都强制 landmine_18=high
+        # + overall_pass=false。这是 Oracle 诊断的「静态扫描成果不流通」修复。
+        chapter_text = bb.read_text(f"chapters/ch{chapter:03d}.md")
+        scan = static_scan_ai_rhythm(chapter_text)
+        # Guard against trivially-short fixture chapters (test seeds, sanity stubs).
+        # Real chapters are 2000+ chars / dozens of paragraphs. With <5 paragraphs
+        # the short_para_ratio metric is meaningless (1 paragraph = 100% short).
+        # Skip the override entirely for such inputs so unit-test fixtures
+        # ("# t\n\n正文") aren't force-failed.
+        meaningful_scan = scan["metrics"]["total_paras"] >= 5
+        severe_hits = (
+            [h for h in scan["hits"] if h["severity"] == "severe"]
+            if meaningful_scan
+            else []
+        )
+        moderate_hits = (
+            [h for h in scan["hits"] if h["severity"] == "moderate"]
+            if meaningful_scan
+            else []
+        )
+
+        if severe_hits or len(moderate_hits) >= 2:
+            # severe 命中 → high（强制 overall_pass=false）
+            # 仅 moderate 累积（≥2）→ medium（不强制翻车，与已有 LLM medium 合并计数）
+            severity = "high" if severe_hits else "medium"
+            evidence_parts = []
+            for h in severe_hits + moderate_hits:
+                evidence_parts.append(
+                    f"{h['criterion']}={h['count']} (健康上限 {h['threshold']})"
+                )
+            verdict["landmines"]["landmine_18"] = {
+                "hit": True,
+                "evidence": "静态扫描机械命中：" + " / ".join(evidence_parts),
+                "severity": severity,
+                "_source": "static_scan",
+            }
+            # high 命中按规则就是 fail
+            if severity == "high":
+                verdict["overall_pass"] = False
+            elif severity == "medium":
+                # medium：与现有 LLM 命中合并；如果已经有 ≥1 个 medium，达到 2+ 翻 false
+                med_count = sum(
+                    1
+                    for mid, m in verdict["landmines"].items()
+                    if m.get("hit") and m.get("severity") == "medium"
+                )
+                if med_count >= 2:
+                    verdict["overall_pass"] = False
+            # 把静态命中追加到 top_3_fixes（如果还有空位）
+            if "top_3_fixes" not in verdict or verdict["top_3_fixes"] is None:
+                verdict["top_3_fixes"] = []
+            slots_left = 3 - len(verdict["top_3_fixes"])
+            for h in (severe_hits + moderate_hits)[:max(0, slots_left)]:
+                where = (h.get("snippet") or h["criterion"])[:60]
+                if len(where) < 6:
+                    where = f"{h['criterion']} 命中（count={h['count']}）"
+                verdict["top_3_fixes"].append(
+                    {
+                        "where": where,
+                        "what": h.get("suggested_direction", "节奏修复（删冗余/合并短段/降密度）"),
+                        "_source": "static_scan",
+                    }
+                )
 
         bb.write_json(f"chapters/ch{chapter:03d}.verdict.json", verdict)
 
