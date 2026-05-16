@@ -457,10 +457,21 @@ def _dispatch(rec: dict, *, cancel, on_progress, logger) -> None:
         )
         from pathlib import Path as _Path
 
-        # sources 为相对仓库根的 novels/*.txt 路径列表
-        source_paths = [_Path(s) if _Path(s).is_absolute()
-                        else (config.PROJECT_ROOT / s)
-                        for s in sources]
+        # sources 字段约定：前端 checkbox.value = 裸文件名（如 "地球OL.txt"），
+        # 来自 GET /api/novels 返回的 n.name（参见 web/routes/novels.py 的
+        # 文件存放规范 — 所有素材放 novels/ 下）。后端这里负责自动拼上
+        # novels/ 前缀。绝对路径或已含 novels/ 前缀的相对路径直接用。
+        def _resolve_novel_path(s: str) -> _Path:
+            p = _Path(s)
+            if p.is_absolute():
+                return p
+            # 已经含 novels/ 前缀（兼容老调用方）
+            if p.parts and p.parts[0] == "novels":
+                return config.PROJECT_ROOT / p
+            # 裸文件名 → 拼上 novels/
+            return config.PROJECT_ROOT / "novels" / p
+
+        source_paths = [_resolve_novel_path(s) for s in sources]
         for p in source_paths:
             if not p.exists():
                 raise FileNotFoundError(f"novel not found: {p}")
