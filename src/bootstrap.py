@@ -272,6 +272,7 @@ def create_project(
     blank_outline: bool = False,
     characters_brief: Optional[str] = None,
     blank_characters: bool = False,
+    ultimate_goal: Optional[str] = None,
     overwrite: bool = False,
     warnings_collector: Optional[list] = None,
 ) -> Path:
@@ -450,6 +451,40 @@ def create_project(
 
     # timeline.yaml — blank
     _write_yaml(project_dir / "timeline.yaml", {"events": []})
+
+    # plot_arc.yaml — auto-draft from ultimate_goal if provided.
+    # ultimate_goal 是新建作品向导 Step 2 的可选字段：填了就调 PlotArcDrafter
+    # 一次 LLM 起草 4 卷骨架；不填则 plot_arc.yaml 不创建（保持向后兼容，bootstrap
+    # 阶段会 print warning，作者可后续跑 init_plot_arc 生成模板）。
+    plot_arc_path = project_dir / "plot_arc.yaml"
+    if not plot_arc_path.exists() and ultimate_goal and ultimate_goal.strip():
+        try:
+            from src.agents.plot_arc_drafter import run as draft_plot_arc
+            era_excerpt = ""
+            era_path = project_dir / "era.md"
+            if era_path.exists():
+                era_excerpt = era_path.read_text(encoding="utf-8")[:500]
+            arc_dict = draft_plot_arc(
+                ultimate_goal=ultimate_goal,
+                chapter_count_target=chapter_count_target,
+                era_md_excerpt=era_excerpt,
+            )
+            plot_arc_path.write_text(
+                "# Auto-drafted from ultimate_goal. 请打磨 milestones / 调整 anchor_quota / 修正卷次界限\n"
+                + yaml.safe_dump(arc_dict, allow_unicode=True, sort_keys=False, default_flow_style=False),
+                encoding="utf-8",
+            )
+            if warnings_collector is not None:
+                warnings_collector.append({
+                    "field": "plot_arc",
+                    "reason": "auto-drafted from ultimate_goal; refine before running pipeline",
+                })
+        except Exception as e:  # noqa: BLE001
+            if warnings_collector is not None:
+                warnings_collector.append({
+                    "field": "plot_arc",
+                    "reason": f"PlotArcDrafter failed: {type(e).__name__}: {e}",
+                })
 
     return project_dir
 

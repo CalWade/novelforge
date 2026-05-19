@@ -147,6 +147,7 @@ async function wizardSubmit() {
   const brief = (fd.get('characters_brief') || '').toString().trim();
   const protName = (fd.get('protagonist_name') || '').toString().trim();
   const chRaw = (fd.get('chapter_count_target') || '').toString().trim();
+  const ultimateGoal = (fd.get('ultimate_goal') || '').toString().trim();
 
   const payload = {
     // id 不传 → 后端 auto_generate_project_id 从 display_name 生成
@@ -156,6 +157,7 @@ async function wizardSubmit() {
   // 留空字段不进 payload：后端用默认值（protagonist_name="" / chapter_count_target=50）
   if (protName) payload.protagonist_name = protName;
   if (chRaw) payload.chapter_count_target = Number(chRaw);
+  if (ultimateGoal) payload.ultimate_goal = ultimateGoal;
   // outline / characters：有内容就传；空则默认 blank_*=true
   if (synopsis) {
     payload.outline_synopsis = synopsis;

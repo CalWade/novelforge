@@ -179,6 +179,7 @@ def api_project_new():
             blank_outline=bool(body.get("blank_outline", False)),
             characters_brief=body.get("characters_brief"),
             blank_characters=bool(body.get("blank_characters", False)),
+            ultimate_goal=(body.get("ultimate_goal") or "").strip() or None,
             overwrite=bool(body.get("overwrite", False)),
             warnings_collector=warnings,
         )

@@ -63,6 +63,14 @@
           <input name="chapter_count_target" class="form-input" type="number"
                  min="1" max="999" placeholder="50" />
         </label>
+        <label class="form-field">
+          <span class="form-label">主角终极目标 / 故事核心驱动力
+            <span class="form-hint">（用于自动起草 plot_arc.yaml 4 卷骨架）</span>
+          </span>
+          <textarea name="ultimate_goal" class="form-input" rows="2"
+                    placeholder="一句话：主角最后要达成什么 / 不达成什么？例：苏烬要找出灰烬契书的源头并解开自身契约。"></textarea>
+          <span class="form-hint">可留空，但作品后续节奏会容易跑偏（Planner 缺全书坐标系）。</span>
+        </label>
         <div class="form-error" data-wizard-error="2" hidden></div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" data-wizard-prev="1">← 上一步</button>
